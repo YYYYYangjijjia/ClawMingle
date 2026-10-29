@@ -42,6 +42,24 @@ pub struct ExecutionResult {
     pub changed_files: Vec<PathBuf>,
     pub token_usage_info: Option<TokenUsageInfo>,
     pub context_window: Option<u64>,
+    pub generated_images: Vec<GeneratedImage>,
+}
+
+#[derive(Clone)]
+pub struct GeneratedImage {
+    pub png: Vec<u8>,
+}
+
+/// Native PNG collection is separate from the smaller QQ delivery envelope.
+pub const MAX_GENERATED_IMAGE_BYTES: usize = 8 * 1024 * 1024;
+
+impl std::fmt::Debug for GeneratedImage {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("GeneratedImage")
+            .field("bytes", &self.png.len())
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +70,13 @@ pub enum ExecutionUpdate {
     SessionStarted {
         session_id: String,
     },
+    /// The app-server acknowledged turn/start; establishing a thread is earlier.
+    TurnStarted {
+        session_id: String,
+        turn_id: String,
+    },
+    /// Content-free evidence from the current native turn, never user-visible text.
+    Activity,
     AgentMessage {
         text: String,
     },

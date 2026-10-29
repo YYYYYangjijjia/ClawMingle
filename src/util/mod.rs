@@ -8,5 +8,6 @@ pub(crate) mod fs;
 pub(crate) mod lang;
 pub(crate) mod layout;
 pub(crate) mod path;
+pub(crate) mod skill_package;
 pub(crate) mod text;
 pub(crate) mod time;

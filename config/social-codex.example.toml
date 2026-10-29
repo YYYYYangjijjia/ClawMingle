@@ -1,0 +1,17 @@
+# Independent data_dir/runtime/codex/config.toml, mode 0600.
+# Sign in independently or provide a separate OPENAI_API_KEY in model.env.
+model = "gpt-6.1-sol"
+model_reasoning_effort = "high"
+cli_auth_credentials_store = "file"
+# Built-in search only; shell, MCP, plugins and other workspaces remain disabled.
+web_search = "live"
+
+# Other providers must support the Responses protocol required by Codex.
+# Select the provider here before starting the isolated App Server:
+# model_provider = "example"
+# [model_providers.example]
+# name = "Example Responses provider"
+# base_url = "https://example.com/v1"
+# env_key = "CLAWMINGLE_MODEL_API_KEY"
+# wire_api = "responses"
+# requires_openai_auth = false

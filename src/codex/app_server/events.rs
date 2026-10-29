@@ -8,6 +8,7 @@
 //! Only events that don't fit the legacy shape get new output paths
 //! (e.g. `[Model rerouted -> ...]`).
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::Value as JsonValue;
 use tracing::trace;
 
@@ -31,9 +32,13 @@ pub(crate) struct TurnState {
     pub(crate) thread_id: Option<String>,
     pub(crate) turn_id: Option<String>,
     pub(crate) agent_text_parts: Vec<String>,
+    pub(crate) final_agent_text_parts: Vec<String>,
     pub(crate) changed_files: Vec<std::path::PathBuf>,
     pub(crate) token_usage: Option<TokenUsagePayload>,
     pub(crate) last_plan_signature: Option<String>,
+    pub(crate) generated_images: Vec<crate::codex::GeneratedImage>,
+    pub(crate) generated_image_ids: std::collections::HashSet<String>,
+    pub(crate) image_output_invalid: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +86,13 @@ pub(crate) fn translate_item_completed(
     state: &mut TurnState,
     notif: &ItemNotification,
 ) -> Vec<ExecutionUpdate> {
+    if matches!(
+        notif.item.item_type.as_str(),
+        "imageGeneration" | "image_generation"
+    ) {
+        capture_generated_image(state, &notif.item);
+        return Vec::new();
+    }
     let item = to_display_item(&notif.item);
     trace!(item_type = %item.item_type, "item/completed");
     let item_type = item.item_type.as_str();
@@ -89,6 +101,9 @@ pub(crate) fn translate_item_completed(
             && !text.is_empty()
         {
             state.agent_text_parts.push(text.clone());
+            if notif.item.phase.as_deref() == Some("final_answer") {
+                state.final_agent_text_parts.push(text.clone());
+            }
             return vec![ExecutionUpdate::AgentMessage { text }];
         }
         return Vec::new();
@@ -103,6 +118,37 @@ pub(crate) fn translate_item_completed(
     match tool_display_for_item(&item, ToolEventPhase::Completed) {
         Some(display) => vec![ExecutionUpdate::ToolCall { display }],
         None => Vec::new(),
+    }
+}
+
+fn capture_generated_image(state: &mut TurnState, item: &ItemPayload) {
+    if item.status.as_deref() != Some("completed") {
+        return;
+    }
+    let Some(id) = item.id.as_ref().filter(|id| !id.is_empty()) else {
+        state.image_output_invalid = true;
+        return;
+    };
+    if state.generated_image_ids.contains(id) {
+        return;
+    }
+    let Some(encoded) = item.result.as_ref().and_then(JsonValue::as_str) else {
+        state.image_output_invalid = true;
+        return;
+    };
+    const MAX_BYTES: usize = crate::codex::MAX_GENERATED_IMAGE_BYTES;
+    if state.generated_images.len() >= 2 || encoded.len() > MAX_BYTES.div_ceil(3) * 4 {
+        state.image_output_invalid = true;
+        return;
+    }
+    match STANDARD.decode(encoded) {
+        Ok(png) if png.len() <= MAX_BYTES && png.starts_with(b"\x89PNG\r\n\x1a\n") => {
+            state
+                .generated_images
+                .push(crate::codex::GeneratedImage { png });
+            state.generated_image_ids.insert(id.clone());
+        }
+        _ => state.image_output_invalid = true,
     }
 }
 
@@ -393,6 +439,55 @@ fn json_text_or_join(v: &JsonValue) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generated_images_are_bounded_deduplicated_and_do_not_use_saved_paths() {
+        let mut state = TurnState::default();
+        let bytes = b"\x89PNG\r\n\x1a\nexample";
+        let item = make_item(
+            json!({"id":"image-1","type":"imageGeneration","status":"completed", "result":STANDARD.encode(bytes),"savedPath":"/state/codex/auth.json"}),
+        );
+        assert!(translate_item_completed(&mut state, &item).is_empty());
+        translate_item_completed(&mut state, &item);
+        assert_eq!(state.generated_images.len(), 1);
+        assert_eq!(state.generated_images[0].png, bytes);
+        assert!(!state.image_output_invalid);
+        let invalid = make_item(
+            json!({"id":"image-2","type":"imageGeneration","status":"completed","result":STANDARD.encode(b"not an image")}),
+        );
+        translate_item_completed(&mut state, &invalid);
+        assert!(state.image_output_invalid);
+    }
+
+    #[test]
+    fn oversized_and_failed_generation_never_become_outbound_images() {
+        let mut state = TurnState::default();
+        let failed = make_item(
+            json!({"id":"failed","type":"imageGeneration","status":"failed","result":"ignored"}),
+        );
+        translate_item_completed(&mut state, &failed);
+        assert!(!state.image_output_invalid);
+        let large = make_item(
+            json!({"id":"large","type":"imageGeneration","status":"completed","result":"A".repeat(crate::codex::MAX_GENERATED_IMAGE_BYTES.div_ceil(3)*4+1)}),
+        );
+        translate_item_completed(&mut state, &large);
+        assert!(state.image_output_invalid);
+        assert!(state.generated_images.is_empty());
+    }
+
+    #[test]
+    fn final_answer_collection_excludes_commentary_and_unlabelled_messages() {
+        let mut state = TurnState::default();
+        for raw in [
+            json!({"type":"agentMessage", "phase":"commentary", "text":"working"}),
+            json!({"type":"agentMessage", "text":"unlabelled"}),
+            json!({"type":"agentMessage", "phase":"final_answer", "text":"{\"bubbles\":[\"hello\"]}"}),
+        ] {
+            translate_item_completed(&mut state, &make_item(raw));
+        }
+        assert_eq!(state.agent_text_parts.len(), 3);
+        assert_eq!(state.final_agent_text_parts, [r#"{"bubbles":["hello"]}"#]);
+    }
     use serde_json::json;
 
     fn make_item(raw: serde_json::Value) -> ItemNotification {

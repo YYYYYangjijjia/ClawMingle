@@ -1,3 +1,35 @@
+# ClawMingle
+
+ClawMingle 面向 QQ 多人群聊：由 Jev 判断参与和消息关系，Codex 处理回复与任务；应用维护追加、取消、上下文、投递和限流恢复。基于 [CodexClaw](https://github.com/Rhapsody0x1/CodexClaw) 开发，保留上游 MIT 许可与说明。
+
+## ClawMingle 从这里开始
+
+使用 Linux、Rust/Cargo、原生 Codex 和 Bubblewrap。原生工作环境验证基线为 Codex 0.161.0；完整依赖与独立运行目录见[准备流程](docs/native-runtime.md)。
+
+```sh
+cargo build --bins --locked
+target/debug/clawmingle --help
+```
+
+1. 将 [ClawMingle 示例配置](config/clawmingle.example.toml) 复制到仓库外私有目录；按[群聊指南](docs/social-pilot.md#配置和独立认证)配置 QQ/Jev 凭据、群白名单与机器人独立模型认证。不要将凭据填写到聊天或提交到 Git。
+2. 核对功能默认值：示例为 `mode-1`，启用私聊、会话工作区、每日记忆整理与表情自动收集；浏览器依赖会准备到私有目录，使用仍需会话授权。按实际需求调整后运行本地配置检查。
+3. 明确启动 `clawmingle`：
+
+```sh
+target/debug/clawmingle check --config "$HOME/.config/clawmingle/social.toml"
+target/debug/clawmingle run --config "$HOME/.config/clawmingle/social.toml"
+```
+
+`check` 不连接真实服务，`run` 才接收消息；不会自动安装系统服务。`cargo run` 的默认目标仍是上游 `codex-claw`，不能替代上面的 ClawMingle 入口。
+
+所有收到的对话（包括静默消息）会在私有目录存档；图片、语音转写、记忆、素材与任务文件有各自的保存策略。查看[数据与上下文](docs/message-context.md)、[记忆](docs/memory.md)、[表情](docs/stickers.md)、[管理界面](docs/admin.md)和[开发验证](docs/development.md)。滚动上下文裁剪不会删除完整存档。管理界面另需经过鉴权的代理，不应直接暴露到公网。
+
+## 保留的上游 CodexClaw 文档
+
+以下原文描述上游 `codex-claw`，包括个人 Codex 会话导入和上游部署流程。它不描述 ClawMingle 的独立认证、隔离工作区及群聊运行方式；部署本仓库的 ClawMingle 请使用上面的入口和链接。
+
+---
+
 <div align="center">
 
 <img src="./assets/banner.svg" width="600" alt="CodexClaw">

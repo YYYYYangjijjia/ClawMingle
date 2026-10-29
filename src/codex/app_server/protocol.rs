@@ -100,6 +100,12 @@ pub(crate) struct InitializeResponse {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ThreadStartParams {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) environments: Option<Vec<JsonValue>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) selected_capability_roots: Option<Vec<JsonValue>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) dynamic_tools: Option<Vec<JsonValue>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) cwd: Option<String>,
@@ -196,6 +202,8 @@ pub(crate) struct Thread {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TurnStartParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) environments: Option<Vec<JsonValue>>,
     pub(crate) thread_id: String,
     pub(crate) input: Vec<TurnInputItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -216,6 +224,8 @@ pub(crate) struct TurnStartParams {
     pub(crate) service_tier: Option<Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) collaboration_mode: Option<CollaborationMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) output_schema: Option<JsonValue>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -223,12 +233,28 @@ pub(crate) struct TurnStartParams {
 pub(crate) enum TurnInputItem {
     Text { text: String },
     LocalImage { path: String },
+    Image { url: String },
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TurnStartResponse {
     pub(crate) turn: Turn,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TurnSteerParams {
+    pub(crate) thread_id: String,
+    pub(crate) input: Vec<TurnInputItem>,
+    pub(crate) expected_turn_id: String,
+    pub(crate) client_user_message_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TurnSteerResponse {
+    pub(crate) turn_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -298,6 +324,10 @@ pub(crate) enum SandboxMode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub(crate) enum SandboxPolicy {
+    ExternalSandbox {
+        #[serde(rename = "networkAccess")]
+        network_access: String,
+    },
     ReadOnly {
         #[serde(rename = "networkAccess")]
         #[serde(default)]
@@ -747,6 +777,32 @@ mod tests {
     }
 
     #[test]
+    fn native_environment_is_explicit_and_external_sandbox_is_not_host_access() {
+        let environment = serde_json::json!({"environmentId":"scope-test","cwd":"/workspace","runtimeWorkspaceRoots":["/workspace"]});
+        let p = ThreadStartParams {
+            environments: Some(vec![environment.clone()]),
+            selected_capability_roots: Some(vec![
+                serde_json::json!({"id":"example","location":{"type":"environment","environmentId":"scope-test","path":"/skills/example"}}),
+            ]),
+            ..Default::default()
+        };
+        let wire = serde_json::to_value(p).unwrap();
+        assert_eq!(wire["environments"][0], environment);
+        assert_eq!(
+            wire["selectedCapabilityRoots"][0]["location"]["environmentId"],
+            "scope-test"
+        );
+        let sandbox = serde_json::to_value(SandboxPolicy::ExternalSandbox {
+            network_access: "restricted".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            sandbox,
+            serde_json::json!({"type":"externalSandbox","networkAccess":"restricted"})
+        );
+    }
+
+    #[test]
     fn sandbox_policy_read_only_serializes_tagged() {
         let p = SandboxPolicy::ReadOnly {
             network_access: false,
@@ -818,7 +874,8 @@ mod tests {
 
     #[test]
     fn turn_start_serializes_nested_service_tier() {
-        let p = TurnStartParams {
+        let mut p = TurnStartParams {
+            environments: None,
             thread_id: "t".into(),
             input: Vec::new(),
             approval_policy: None,
@@ -830,9 +887,16 @@ mod tests {
             effort: None,
             service_tier: Some(Some("fast".into())),
             collaboration_mode: None,
+            output_schema: None,
         };
         let v = serde_json::to_value(&p).unwrap();
         assert_eq!(v["serviceTier"], "fast");
+        assert!(v.get("outputSchema").is_none());
+        p.output_schema = Some(serde_json::json!({"type":"object"}));
+        assert_eq!(
+            serde_json::to_value(&p).unwrap()["outputSchema"]["type"],
+            "object"
+        );
     }
 
     #[test]

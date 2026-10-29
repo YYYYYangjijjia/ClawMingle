@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily confirmed group memory maintenance
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 Asia/Shanghai
+Persistent=true
+AccuracySec=1min
+Unit=clawmingle-memory.service
+
+[Install]
+WantedBy=timers.target

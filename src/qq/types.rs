@@ -35,6 +35,13 @@ pub(crate) struct HelloPayload {
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ReadyPayload {
     pub(crate) session_id: String,
+    #[serde(default)]
+    pub(crate) user: Option<ReadyUser>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct ReadyUser {
+    pub(crate) id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -44,34 +51,27 @@ pub struct C2CMessageEvent {
     pub(crate) content: String,
     pub(crate) author: EventAuthor,
     #[serde(default)]
+    pub(crate) timestamp: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
     pub(crate) attachments: Vec<MessageAttachment>,
     #[serde(default)]
     pub(crate) message_type: Option<u32>,
     #[serde(default)]
     pub(crate) msg_elements: Vec<MsgElement>,
+    #[serde(default)]
+    pub(crate) message_scene: Option<super::group::GroupMessageScene>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct EventAuthor {
     pub(crate) user_openid: String,
+    #[serde(default)]
+    pub(crate) username: Option<String>,
+    #[serde(default)]
+    pub(crate) bot: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct MessageAttachment {
-    pub(crate) content_type: String,
-    pub(crate) url: String,
-    #[serde(default)]
-    pub(crate) filename: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct MsgElement {
-    #[serde(default)]
-    pub(crate) msg_idx: Option<String>,
-    #[serde(default)]
-    pub(crate) content: Option<String>,
-    #[serde(default)]
-    pub(crate) attachments: Vec<MessageAttachment>,
-    #[serde(default)]
-    pub(crate) msg_elements: Vec<MsgElement>,
-}
+// QQ documents the same recursive elements for group and C2C messages. Keep
+// one decoder so private quotes retain authors and media just like group quotes.
+pub(crate) type MessageAttachment = super::group::GroupAttachment;
+pub(crate) type MsgElement = super::group::GroupMessageElement;

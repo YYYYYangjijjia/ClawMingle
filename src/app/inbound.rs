@@ -604,8 +604,11 @@ mod tests {
                     content_type: "text/plain".into(),
                     url: "https://example.com/a".into(),
                     filename: Some("a.txt".into()),
+                    voice_wav_url: None,
+                    asr_refer_text: None,
                 }],
                 msg_elements: Vec::new(),
+                ..Default::default()
             }],
         )
         .unwrap();

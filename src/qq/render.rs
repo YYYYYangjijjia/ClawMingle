@@ -88,6 +88,7 @@ impl PassiveTurnEmitter {
         let mut send_error = None;
         while let Some(update) = updates.recv().await {
             match update {
+                ExecutionUpdate::TurnStarted { .. } | ExecutionUpdate::Activity => {}
                 ExecutionUpdate::SessionStarted { session_id } => {
                     self.session_id = Some(session_id)
                 }

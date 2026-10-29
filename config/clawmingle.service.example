@@ -1,0 +1,22 @@
+[Unit]
+Description=ClawMingle QQ assistant
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/clawmingle
+ExecStart=%h/.local/lib/clawmingle/clawmingle run --config %h/.config/clawmingle/social.toml
+Restart=always
+RestartSec=10
+KillSignal=SIGINT
+KillMode=mixed
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+MemoryMax=768M
+TasksMax=128
+Environment=RUST_LOG=off
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=ClawMingle confirmed group memory maintenance
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/.local/share/clawmingle
+ExecStart=%h/.local/lib/clawmingle/clawmingle memory-maintain --config %h/.config/clawmingle/social.toml
+TimeoutStartSec=60
+UMask=0077
+NoNewPrivileges=true
+MemoryMax=128M
+TasksMax=32
+RestrictAddressFamilies=AF_UNIX
+Environment=RUST_LOG=off

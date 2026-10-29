@@ -56,3 +56,29 @@ Follow the Conventional Commits style established in the repository: use prefixe
 
 ## Configuration & Security Tips
 Do not commit real QQ credentials or Codex auth material. Keep secrets in a local TOML file and load it with `CODEX_CLAW_CONFIG`; config loading checks that variable first, then `./codexclaw.toml`, then `~/.codex-claw/codexclaw.toml`. Treat `data/` and `~/.codex-claw/.codex/` as sensitive runtime state: they can contain session settings, downloaded attachments, scheduler jobs, cron workspaces, run logs, pending deliveries, memory notes, skill files, and copied Codex config/auth files. Inspect and back up these directories before deleting or sharing them. Shell cron jobs can execute arbitrary programs, and Codex cron jobs may store prompts and outputs in logs, so avoid placing credentials in prompts, messages, job metadata, or run output.
+
+## ClawMingle Development Addendum
+
+The upstream guidance above is preserved. Follow [docs/development.md](docs/development.md)
+for ClawMingle's current scope and repository protections. Read `.local/DEVELOPMENT.md`
+when present for machine-specific paths and validation records; keep it ignored.
+
+- Current agreed scope: an existing official QQ bot and the owner's two-person test
+  group; Jev is the participation decision engine. Build the flow before evaluating
+  decision accuracy. Long-term memory requires confirmation. Product implementation
+  and live model connections remain separate from repository preparation.
+- Preserve the existing Rust/Cargo toolchain and upstream module boundaries. Use
+  bounded checks appropriate to the actual diff; do not start the bot or a real
+  app-server smoke test as a routine development check.
+- This shared machine also hosts protected infrastructure. Repository work does not
+  authorize deployment, service restarts, public listeners, scheduled jobs or changes
+  to VPN, SSH, networking, existing dashboards or other projects. Future development
+  listeners bind to loopback. Never copy personal Codex authentication into test state.
+- Keep real API keys, passwords, tokens, server IPs/hostnames and connection details
+  outside tracked files, including docs, fixtures, screenshots and commit messages.
+  Use obvious placeholders or reserved documentation addresses in examples. Do not
+  print suspected secret values while investigating them.
+- `.gitignore` does not protect tracked content or Git history. Run the sensitive-data
+  checks described in the development guide before commits and pushes. Preserve and
+  investigate any findings; never remove ignore rules, bypass hooks, rewrite history,
+  discard files or push merely to make a check pass.

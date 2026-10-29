@@ -11,6 +11,7 @@ pub mod scheduler;
 pub(crate) mod self_update;
 pub mod session;
 pub mod shadow;
+pub mod social;
 pub(crate) mod util;
 
 /// The inbound-message value types now live in [`model::message`]; re-exported

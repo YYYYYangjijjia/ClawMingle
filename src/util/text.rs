@@ -1,5 +1,32 @@
 //! String shaping helpers: truncation, JSON extraction, label formatting.
 
+/// Render QQ's opaque mention tokens without exposing routing identities.
+/// This is display-only: archived text and structured mention/auth fields stay intact.
+pub(crate) fn display_mentions(value: &str) -> String {
+    let mut result = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(start) = rest.find("<@") {
+        result.push_str(&rest[..start]);
+        rest = &rest[start..];
+        if let Some(end) = rest.find('>') {
+            let id = rest[2..end].strip_prefix('!').unwrap_or(&rest[2..end]);
+            if !id.is_empty()
+                && id
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+            {
+                result.push_str("@成员");
+                rest = &rest[end + 1..];
+                continue;
+            }
+        }
+        result.push('<');
+        rest = &rest[1..];
+    }
+    result.push_str(rest);
+    result
+}
+
 /// Keep at most `max_chars` characters and append `marker` only when something
 /// was actually dropped. Callers pass their own marker because the existing
 /// call sites differ (`"..."`, `" ..."`), and those strings are user-visible.
@@ -126,6 +153,17 @@ fn strip_fenced(s: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opaque_mentions_are_display_only_and_plain_at_stays_plain() {
+        let source = "<@opaque_bot> 查一下，问问<@!member-2>，@Codex 还有<@not a token>";
+        assert_eq!(
+            display_mentions(source),
+            "@成员 查一下，问问@成员，@Codex 还有<@not a token>"
+        );
+        assert!(source.contains("opaque_bot"));
+        assert_eq!(display_mentions("<@unfinished"), "<@unfinished");
+    }
 
     #[test]
     fn truncate_with_marker_only_marks_when_it_cuts() {

@@ -1,3 +1,33 @@
+# ClawMingle
+
+ClawMingle adapts [CodexClaw](https://github.com/Rhapsody0x1/CodexClaw) for multi-party QQ conversations. Jev judges participation and message relationships; Codex handles replies and tasks. The application owns context selection, amendments, cancellation, delivery and rate-limit recovery. The upstream MIT license and documentation are retained below.
+
+## Start ClawMingle
+
+Use Linux, Rust/Cargo, native Codex and Bubblewrap. The native execution baseline is Codex 0.161.0; see [runtime preparation](docs/native-runtime.md).
+
+```sh
+cargo build --bins --locked
+target/debug/clawmingle --help
+```
+
+Copy [the example configuration](config/clawmingle.example.toml) outside the repository into a private directory. Configure QQ/Jev credentials, allowed groups and a separate bot model login using [the setup guide](docs/social-pilot.md#配置和独立认证). Review defaults before starting: the example uses mode-1 and enables private conversations, conversation workspaces, daily memory processing and sticker collection. Browser installation and conversation permission are separate.
+
+```sh
+target/debug/clawmingle check --config "$HOME/.config/clawmingle/social.toml"
+target/debug/clawmingle run --config "$HOME/.config/clawmingle/social.toml"
+```
+
+`check` validates local configuration; only `run` starts the bot. It does not install a service. The default `cargo run` target is still upstream `codex-claw`, not ClawMingle. Keep credentials out of messages and Git.
+
+Received messages, including silent ones, are archived privately. Images, transcripts, memory, stickers and task files have separate retention rules; trimming model input does not delete the archive. See [message context](docs/message-context.md), [memory](docs/memory.md), [stickers](docs/stickers.md), [admin](docs/admin.md) and [development](docs/development.md). The optional admin UI requires a separately authenticated proxy.
+
+## Retained upstream CodexClaw documentation
+
+The original material below describes the upstream executable, including its personal-session import and deployment workflow. For ClawMingle's independent profile and group-chat runtime, use the entry point and guides above.
+
+---
+
 <div align="center">
 
 <img src="./assets/banner.svg" width="600" alt="CodexClaw">

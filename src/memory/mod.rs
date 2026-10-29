@@ -1,3 +1,4 @@
+pub mod group;
 pub(crate) mod inject;
 pub(crate) mod scan;
 pub(crate) mod store;

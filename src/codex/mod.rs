@@ -15,10 +15,14 @@ pub(crate) mod types;
 // The `pub` block is the part the binary and the app-server smoke test consume;
 // everything else is `pub(crate)` so the compiler keeps reporting unused items
 // instead of treating "some external crate might want it" as a use.
-pub use app_server::{AppServerHandle, ClientInfo};
+pub use app_server::{
+    AppServerHandle, ClientInfo, IsolatedAppServerConfig, SOCIAL_CODEX_HOME, SOCIAL_WORKSPACE,
+};
 pub use executor::{CodexExecutor, build_codex_path_env};
 pub use types::TokenUsageInfo;
-pub use types::{ExecutionRequest, ExecutionResult, ExecutionUpdate};
+pub use types::{
+    ExecutionRequest, ExecutionResult, ExecutionUpdate, GeneratedImage, MAX_GENERATED_IMAGE_BYTES,
+};
 
 pub(crate) use app_server::{
     ApprovalOutcome, ApprovalRequest, CommandApprovalEvent, FileChangeApprovalEvent,

@@ -27,35 +27,65 @@ pub(crate) struct StdioTransport {
 
 impl StdioTransport {
     /// Spawn `codex app-server --listen stdio://` with the given environment.
+    #[cfg(test)]
     pub(crate) fn spawn(
         codex_binary: &std::path::Path,
         codex_home: &std::path::Path,
         sqlite_home: &std::path::Path,
         extra_path: Option<&std::ffi::OsStr>,
+        isolation: Option<&super::isolation::IsolatedAppServerConfig>,
     ) -> Result<Self> {
-        let mut cmd = Command::new(codex_binary);
-        cmd.arg("app-server")
-            .arg("--listen")
-            .arg("stdio://")
-            .env("CODEX_HOME", codex_home)
-            .env("CODEX_SQLITE_HOME", sqlite_home)
-            .stdin(Stdio::piped())
+        Self::spawn_with_hooks(
+            codex_binary,
+            codex_home,
+            sqlite_home,
+            extra_path,
+            isolation,
+            None,
+        )
+    }
+
+    pub(crate) fn spawn_with_hooks(
+        codex_binary: &std::path::Path,
+        codex_home: &std::path::Path,
+        sqlite_home: &std::path::Path,
+        extra_path: Option<&std::ffi::OsStr>,
+        isolation: Option<&super::isolation::IsolatedAppServerConfig>,
+        hooks: Option<&super::isolation::HookMounts>,
+    ) -> Result<Self> {
+        let mut cmd = if let Some(isolation) = isolation {
+            isolation.command_with_hooks(hooks)?
+        } else {
+            let mut cmd = Command::new(codex_binary);
+            cmd.arg("app-server")
+                .arg("--listen")
+                .arg("stdio://")
+                .env("CODEX_HOME", codex_home)
+                .env("CODEX_SQLITE_HOME", sqlite_home);
+            if let Some(path) = extra_path {
+                cmd.env("PATH", path);
+            }
+            cmd
+        };
+        cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(if isolation.is_some() {
+                Stdio::null()
+            } else {
+                Stdio::piped()
+            })
             .kill_on_drop(true);
-        if let Some(path) = extra_path {
-            cmd.env("PATH", path);
-        }
         let mut child = cmd
             .spawn()
             .with_context(|| format!("failed to spawn {}", codex_binary.display()))?;
         let stdin = child.stdin.take().context("child stdin missing")?;
         let stdout = child.stdout.take().context("child stdout missing")?;
-        let stderr = child.stderr.take().context("child stderr missing")?;
+        // Isolated launches deliberately discard stderr instead of opening a pipe.
+        let stderr = child.stderr.take();
         Ok(Self {
             stdin: Mutex::new(stdin),
             stdout: Mutex::new(Some(BufReader::new(stdout))),
-            stderr: Mutex::new(Some(stderr)),
+            stderr: Mutex::new(stderr),
             child: Mutex::new(Some(child)),
         })
     }
@@ -154,8 +184,8 @@ where
                 Ok(Some(line)) => match parse_line(&line) {
                     Ok(msg) => handler(msg),
                     Err(ParseError::Invalid(_)) if line.trim().is_empty() => {}
-                    Err(err) => {
-                        warn!(error = %err, line = %line, "dropping unparseable app-server line");
+                    Err(_) => {
+                        warn!("dropping unparseable app-server line");
                     }
                 },
                 Ok(None) => {

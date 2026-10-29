@@ -1,0 +1,9 @@
+name: clawmingle-dev
+channels:
+  - conda-forge
+dependencies:
+  - rust=1.99.0
+  - c-compiler=2.0.0
+  - pkg-config=0.29.2
+  - python=3.12
+  - nodejs=24

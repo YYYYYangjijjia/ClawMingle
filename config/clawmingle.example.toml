@@ -1,0 +1,173 @@
+# Identity and personality files: data_dir/persona/IDENTITY.md and SOUL.md.
+# Saving Identity + Soul in the admin enables files and removes inline soul.
+# Both private, nonempty files must exist before manually enabling this flag.
+persona_files = false
+# Legacy personality, used only when persona_files=false.
+soul = ""
+reply_format = "text" # text or markdown (with help command buttons)
+# Instruction skills installed in data_dir/skills/<name>/SKILL.md.
+enabled_skills = []
+# General workspace, public information and read-only conversation history tools.
+enabled_tools = ["workspace_exec", "time_now", "weather_current", "public_web_read", "message_lookup", "messages_list", "tasks_manage", "qq_info", "memory_manage", "task_update", "sticker_lookup", "sticker_manage", "identity_manage", "group_profile_manage"]
+tasks_enabled = true
+# Scope-specific administrator lists can override command_admins. Keys are
+# "group:<OpenID>" or "private:<OpenID>". An empty list explicitly denies all.
+# scope_admins = { "group:YOUR_GROUP_OPENID" = ["YOUR_ADMIN_OPENID"] }
+
+# Copy outside Git, chmod 0600; parent directory must be 0700.
+# Fill with platform OpenID, not the numeric QQ group number.
+data_dir = "~/.local/share/clawmingle"
+qq_credentials_file = "~/.config/clawmingle/qq.env"
+allowed_groups = ["YOUR_GROUP_OPENID"]
+# Only these platform member OpenIDs may change group-wide settings.
+command_admins = []
+private_enabled = true
+# Empty permits users who can already contact this QQ bot; fill to restrict.
+private_allowed_users = []
+max_private_sessions = 16
+mode = "mode-1"
+quiet_ms = 1200
+max_wait_ms = 4000
+context_messages = 20
+max_messages = 500
+max_active_requests = 16
+retention_hours = 24
+request_link_seconds = 600
+max_bubbles = 3
+max_bubble_chars = 1000
+bubble_interval_ms = 600
+
+# Shared across foreground, scheduled model work, memory, sticker annotation
+# and native images in this bot process. Jev and fixed reminders are separate.
+[model_admission]
+max_concurrent_turns = 2
+start_interval_ms = 1000
+initial_backoff_seconds = 30
+maximum_backoff_seconds = 300
+
+# Shared input for fresh, independent short replies in this conversation.
+# Jev rechecks each request separately; external operations run individually.
+[batching]
+enabled = true
+max_requests = 4
+max_input_tokens = 12000
+review_after_seconds = 30
+
+# Text-only soft goals; preserve required sources/persona even above the goal.
+# Actual native input also includes history, images and provider instructions.
+[input_budget]
+chat_text_tokens = 12000
+task_text_tokens = 30000
+auto_compact_tokens = 60000
+tool_output_tokens = 4000
+
+[jev]
+model = "jev-1.14.0"
+credentials_file = "~/.config/clawmingle/jev.env"
+timeout_ms = 5000
+retries = 1
+
+[codex]
+# Native tools are prepared automatically for authorized conversation workspaces.
+binary = "/opt/codex/current/bin/codex"
+bubblewrap_binary = "/usr/bin/bwrap"
+model = "gpt-6.1-sol"
+reasoning_effort = "high"
+turn_timeout_seconds = 180
+# Optional: explicitly use the provider in independent runtime/codex/config.toml.
+# provider = "example"
+# credentials_file = "~/.config/clawmingle/model.env"
+
+[model_presets.sol]
+model = "gpt-6.1-sol"
+reasoning_effort = "high"
+
+[model_presets.luna]
+model = "gpt-6-luna"
+reasoning_effort = "medium"
+
+# Application-owned daily history snapshots. Enabling requires an operator decision.
+# No additional cron entry or system timer is installed.
+[backup]
+auto_enabled = false
+# directory = "~/.local/share/clawmingle/backups" # default: data_dir/backups
+daily_hour_utc = 20 # 04:00 China Standard Time
+retention_days = 7
+max_total_bytes = 1073741824 # 1 GiB; newest valid snapshot is always preserved
+reserve_free_bytes = 16106127360 # also enforce at least 20% filesystem free
+
+# Automatic context windows; these do not delete archived chat history.
+# Unset human windows inherit legacy context_messages (default 20).
+# Start-to-start spacing in mode-3 groups; first response is immediate.
+# Direct questions/@ use 6s; optional chat uses 15s. No change to sticker cooldown.
+[traffic]
+mode3_start_interval_ms = 6000
+mode3_chat_interval_ms = 15000
+
+[context_windows]
+jev_messages = 20
+jev_bot_messages = 6
+codex_messages = 20
+codex_bot_messages = 20
+
+# Adaptive reply categories and mode prompts use built-in defaults.
+# Edit them in the admin UI or inspect `clawmingle behavior --config ...`.
+# mode-1 / mode-all remain deterministic; only mode-2 / mode-3 call Jev.
+
+# Scoped memory: no pre-archive reminder by default. All times Asia/Shanghai.
+[memory]
+enabled = true
+automatic_capture = true
+archive_hour = 4
+archive_minute = 0
+archive_every_days = 1
+short_term_days = 14
+
+# Complex tasks opt into this budget through task_update; small replies stay small.
+[interactions]
+enabled = true
+feedback_mode = "standard" # quiet / standard / detailed; independent of participation
+ack_delay_seconds = 5
+heartbeat_interval_seconds = 90 # 0 disables automatic status notices
+long_timeout_seconds = 0 # 0 means no total deadline for long tasks
+tool_calls = 48
+workspace_timeout_seconds = 120
+long_max_bubbles = 4
+long_bubble_chars = 2000
+max_progress_messages = 2
+progress_interval_seconds = 45
+
+[stickers]
+auto_collect = true # 新图片自动分类收集；mode-1 不自动收集
+enabled = true
+automatic = true
+cooldown_seconds = 0
+usage_instructions = "" # 留空使用自然表达策略；可在后台编辑，最多 4000 字
+
+# Operator registration does not authorize any conversation by itself.
+# When enabled, startup prepares a private pinned runtime automatically.
+# Existing explicit browser.runtime paths are reused after validation.
+[integrations.browser]
+# Prepared automatically; individual conversation grants remain separate.
+enabled = true
+
+[integrations.plugins.openai_docs]
+enabled = true
+name = "OpenAI 官方文档"
+endpoint = "https://developers.openai.com/mcp"
+allowed_tools = ["search_openai_docs", "fetch_openai_doc"]
+
+# Separate Tencent Docs authorization, configured through the private admin UI.
+# Group bots get full CRUD only within their dedicated home-folder binding.
+[documents]
+enabled = false
+# credential_file = "/home/YOUR_USER/.config/clawmingle/tencent-docs.token"
+# [documents.bindings]
+# YOUR_GROUP_OPENID = "YOUR_DEDICATED_FOLDER_ID"
+
+[documents.qq_native]
+enabled = false
+# Set through the authenticated admin QQ login flow. Never store cookies here.
+# browser_state_file = "/home/YOUR_USER/.config/clawmingle/qq-documents-browser/browser-state.json"
+# [documents.qq_native.groups]
+# YOUR_GROUP_OPENID = "12345" # Actual numeric QQ group, separately bound by the operator.

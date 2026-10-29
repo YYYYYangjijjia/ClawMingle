@@ -8,6 +8,7 @@
 pub(crate) mod cron;
 pub(crate) mod message;
 pub(crate) mod settings;
+pub(crate) mod social;
 
 #[cfg(test)]
 mod wire_compat;

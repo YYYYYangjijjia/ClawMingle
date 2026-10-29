@@ -12,6 +12,7 @@ use anyhow::Result;
 use serde_json::Value as JsonValue;
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tracing::{debug, info, warn};
+static SOCIAL_TOOL_SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
 
 use super::{
     client::{JsonRpcClient, ServerRequest},
@@ -125,10 +126,30 @@ impl ApprovalBroker {
             .ok_or_else(|| anyhow::anyhow!("server request receiver already taken"))?;
         let this = self.clone();
         tokio::spawn(async move {
-            while let Some(request) = rx.recv().await {
+            let mut shutdown = this.supervisor.shutdown_receiver();
+            loop {
+                if *shutdown.borrow() {
+                    break;
+                }
+                let request = tokio::select! {
+                    biased;
+                    _ = shutdown.changed() => break,
+                    request = rx.recv() => request,
+                };
+                let Some(request) = request else {
+                    break;
+                };
                 let this = this.clone();
                 tokio::spawn(async move {
-                    this.dispatch(request).await;
+                    let mut shutdown = this.supervisor.shutdown_receiver();
+                    if *shutdown.borrow() {
+                        return;
+                    }
+                    tokio::select! {
+                        biased;
+                        _ = shutdown.changed() => {},
+                        _ = this.dispatch(request) => {},
+                    }
                 });
             }
             debug!("approval broker dispatcher ended");
@@ -144,7 +165,13 @@ impl ApprovalBroker {
                 return;
             }
         };
+        if req.connection_id != client.connection_id {
+            return;
+        }
         match req.method.as_str() {
+            "item/tool/call" if self.supervisor.is_isolated() => {
+                self.dispatch_social_tool(&client, req).await;
+            }
             method::COMMAND_EXECUTION_REQUEST_APPROVAL | method::EXEC_COMMAND_APPROVAL => {
                 self.dispatch_command(&client, req).await;
             }
@@ -158,6 +185,31 @@ impl ApprovalBroker {
                 self.dispatch_elicitation(&client, req).await;
             }
             method::CHATGPT_AUTH_TOKENS_REFRESH => {
+                if self
+                    .supervisor
+                    .isolation_config()
+                    .is_some_and(|config| config.image_worker)
+                {
+                    let auth = super::native_images::refresh_worker_auth(&self.supervisor).await;
+                    match auth {
+                        Ok(auth) => {
+                            let _ = client.respond_ok(req.id, &auth.external_tokens()).await;
+                        }
+                        Err(_) => {
+                            let _ = client
+                                .respond_err(
+                                    req.id,
+                                    JsonRpcError {
+                                        code: -32001,
+                                        message: "image_auth_refresh_failed".into(),
+                                        data: None,
+                                    },
+                                )
+                                .await;
+                        }
+                    }
+                    return;
+                }
                 let err = JsonRpcError {
                     code: -32001,
                     message: "Token refresh not supported by codex-claw".to_string(),
@@ -176,6 +228,178 @@ impl ApprovalBroker {
                 let _ = client.respond_err(req.id, err).await;
             }
         }
+    }
+
+    async fn dispatch_social_tool(&self, client: &Arc<JsonRpcClient>, req: ServerRequest) {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Call {
+            thread_id: String,
+            turn_id: String,
+            call_id: String,
+            tool: String,
+            namespace: Option<String>,
+            arguments: JsonValue,
+        }
+        let Ok(call) = serde_json::from_value::<Call>(req.params) else {
+            let _ = client
+                .respond_err(
+                    req.id,
+                    JsonRpcError {
+                        code: -32602,
+                        message: "Invalid tool call".into(),
+                        data: None,
+                    },
+                )
+                .await;
+            return;
+        };
+        // turn/start can emit a request before its response reaches the session.
+        // Wait for the session's exact binding; stale turns never bind themselves.
+        for _ in 0..50 {
+            self.supervisor.social_tools.bind_child_request(
+                client.connection_id,
+                &call.thread_id,
+                &call.turn_id,
+            );
+            if self
+                .supervisor
+                .social_tools
+                .turn_ready(&call.thread_id, &call.turn_id)
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let mut sticker_preview = None;
+        let mut timing_query = None;
+        let mut output_workspace = None;
+        let mut result = if let Some(lease) = self.supervisor.social_tools.authorize(
+            &call.thread_id,
+            &call.turn_id,
+            call.namespace.as_deref(),
+            &call.tool,
+            &call.call_id,
+        ) {
+            output_workspace = lease
+                .can_read_workspace
+                .then(|| lease.workspace.as_ref().map(|w| w.directory.clone()))
+                .flatten();
+            if call.tool != "task_update" {
+                timing_query = lease.interaction.clone();
+            }
+            if let Ok(_slot) = SOCIAL_TOOL_SLOTS.try_acquire() {
+                let arguments = call.arguments.to_string();
+                if matches!(
+                    call.tool.as_str(),
+                    "message_lookup" | "messages_list" | "tasks_manage" | "memory_manage"
+                ) {
+                    let reader = lease.messages.expect("authorized message reader");
+                    let name = call.tool.clone();
+                    let mut query = tokio::task::spawn_blocking(move || reader(&name, &arguments));
+                    let mut cancelled = lease.cancelled;
+                    tokio::select! {
+                        biased;
+                        _=cancelled.changed()=>serde_json::json!({"ok":false,"error":{"code":"cancelled","message":"消息读取已取消。"}}),
+                        result=&mut query=>result.unwrap_or_else(|_|serde_json::json!({"ok":false,"error":{"code":"message_read_failed","message":"未能读取消息存档。"}})),
+                    }
+                } else if matches!(call.tool.as_str(), "sticker_lookup" | "sticker_manage") {
+                    if !crate::social::sticker_tool_action_allowed(&call.tool, &arguments) {
+                        serde_json::json!({"ok":false,"error":"sticker_action_not_allowed"})
+                    } else {
+                        let query = lease.stickers.expect("authorized sticker reader");
+                        let mut cancelled = lease.cancelled;
+                        let mut job = tokio::task::spawn_blocking(move || query(&arguments));
+                        tokio::select! {biased;
+                            _=cancelled.changed()=>serde_json::json!({"ok":false,"error":"cancelled"}),
+                            result=&mut job=>match result {Ok(result)=>{sticker_preview=result.preview_png;result.data},Err(_)=>serde_json::json!({"ok":false,"error":"sticker_lookup_failed"})}
+                        }
+                    }
+                } else if matches!(
+                    call.tool.as_str(),
+                    "qq_info"
+                        | "task_update"
+                        | "group_documents"
+                        | "identity_manage"
+                        | "group_profile_manage"
+                ) {
+                    let query = if call.tool == "group_documents" {
+                        lease.documents.expect("authorized group documents")
+                    } else if call.tool == "group_profile_manage" {
+                        lease
+                            .group_profile
+                            .expect("authorized group profile editor")
+                    } else if call.tool == "identity_manage" {
+                        lease.identity.expect("authorized identity editor")
+                    } else if call.tool == "task_update" {
+                        lease.interaction.expect("authorized interaction")
+                    } else {
+                        lease.qq_info.expect("authorized QQ reader")
+                    };
+                    let mut cancelled = lease.cancelled;
+                    if *cancelled.borrow() {
+                        serde_json::json!({"ok":false,"error":{"code":"cancelled","message":"工具尚未执行，当前请求已取消。"}})
+                    } else {
+                        let cancelled_result = if call.tool == "group_documents" {
+                            serde_json::json!({"ok":false,"status":"unknown","message":"文档操作已中断，可能有远端副作用。用 group_documents action=operation 和原 operation_id 查询记录，勿盲目重试。"})
+                        } else {
+                            serde_json::json!({"ok":false,"error":{"code":"cancelled","message":"当前操作已取消，请检查交付状态。"}})
+                        };
+                        tokio::select! {biased;_=cancelled.changed()=>cancelled_result,result=query(arguments)=>result}
+                    }
+                } else if super::scoped_integrations::TOOL_NAMES.contains(&call.tool.as_str()) {
+                    let scope = lease.integrations.expect("authorized integration scope");
+                    scope.call(&call.tool, &arguments, lease.cancelled).await
+                } else if call.tool == "workspace_exec" {
+                    if let Some(workspace) = lease.workspace {
+                        super::workspace_exec::execute_with_skills(
+                            &workspace.directory,
+                            &workspace.bubblewrap,
+                            &arguments,
+                            Some(lease.cancelled),
+                            &lease.skills,
+                            lease.workspace_timeout_seconds,
+                        )
+                        .await
+                    } else {
+                        serde_json::json!({"ok":false,"error":{"code":"workspace_not_configured","message":"本对话尚未配置独立工作区。"}})
+                    }
+                } else {
+                    super::social_tools::call_tool(&call.tool, &arguments).await
+                }
+            } else {
+                serde_json::json!({"ok":false,"error":{"code":"tool_busy","message":"工具正在处理其他请求，请稍后重试。"}})
+            }
+        } else {
+            serde_json::json!({"ok":false,"error":{"code":"tool_not_allowed","message":"This tool is disabled, the call is duplicated, the turn has ended, or its budget is exhausted."}})
+        };
+        if let Some(workspace) = output_workspace
+            && super::tool_output::compact(&mut result, &workspace).is_err()
+        {
+            // The operation may have succeeded: never replace its result with a
+            // failed call or encourage replay just because offloading failed.
+            warn!("tool output archive unavailable; retaining original result");
+        }
+        let mut response = if matches!(call.tool.as_str(), "sticker_lookup" | "sticker_manage") {
+            sticker_tool_response(result, sticker_preview)
+        } else {
+            social_tool_response(result, call.tool == "public_browser")
+        };
+        if let Some(query) = timing_query
+            && let Ok(timing) = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                query(r#"{"kind":"observe","text":""}"#.into()),
+            )
+            .await
+            && timing.get("ok").and_then(JsonValue::as_bool) == Some(true)
+            && timing.get("long_task").and_then(JsonValue::as_bool) == Some(true)
+            && let Some(items) = response
+                .get_mut("contentItems")
+                .and_then(JsonValue::as_array_mut)
+        {
+            items.push(serde_json::json!({"type":"inputText","text":format!("Host task timing (current request only): {timing}")}));
+        }
+        let _ = client.respond_ok(req.id, &response).await;
     }
 
     async fn dispatch_command(&self, client: &Arc<JsonRpcClient>, req: ServerRequest) {
@@ -306,6 +530,41 @@ impl ApprovalBroker {
     }
 }
 
+fn sticker_tool_response(result: JsonValue, preview: Option<Vec<u8>>) -> JsonValue {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let success = result.get("ok").and_then(JsonValue::as_bool) == Some(true);
+    let mut items = vec![serde_json::json!({"type":"inputText","text":result.to_string()})];
+    if let Some(bytes) = preview {
+        if !success || bytes.len() > 2 * 1024 * 1024 || !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+            return serde_json::json!({"success":false,"contentItems":[{"type":"inputText","text":"{\"ok\":false,\"error\":\"sticker_preview_invalid\"}"}]});
+        }
+        items.push(serde_json::json!({"type":"inputImage","imageUrl":format!("data:image/png;base64,{}",STANDARD.encode(bytes))}));
+    }
+    serde_json::json!({"success":success,"contentItems":items})
+}
+
+#[cfg(test)]
+mod sticker_content_tests {
+    use super::*;
+    #[test]
+    fn ordinary_json_cannot_promote_an_image_but_typed_catalogue_preview_can() {
+        let result = sticker_tool_response(
+            serde_json::json!({"ok":true,"preview_data_url":"file:///etc/passwd"}),
+            None,
+        );
+        assert_eq!(result["contentItems"].as_array().unwrap().len(), 1);
+        let result = sticker_tool_response(
+            serde_json::json!({"ok":true}),
+            Some(b"\x89PNG\r\n\x1a\npreview".to_vec()),
+        );
+        assert_eq!(result["contentItems"][1]["type"], "inputImage");
+        assert_eq!(
+            sticker_tool_response(serde_json::json!({"ok":true}), Some(b"GIF89a".to_vec()))["success"],
+            false
+        );
+    }
+}
+
 /// Parse `req.params` as `P`; on failure log it, reply invalid-params, and
 /// return `None`.
 async fn parse_approval_params<P: serde::de::DeserializeOwned>(
@@ -332,10 +591,127 @@ async fn respond_parse_err(client: &Arc<JsonRpcClient>, id: JsonValue) {
     let _ = client.respond_err(id, err).await;
 }
 
+/// Public screenshots are native model image input, never base64 text context.
+fn social_tool_response(mut result: JsonValue, allow_image: bool) -> JsonValue {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let success = result.get("ok").and_then(JsonValue::as_bool) == Some(true);
+    let image = result
+        .as_object_mut()
+        .and_then(|object| object.remove("image"));
+    let mut content = vec![serde_json::json!({"type":"inputText","text":result.to_string()})];
+    if allow_image
+        && success
+        && let Some(image) = image
+        && image.get("mime_type").and_then(JsonValue::as_str) == Some("image/png")
+        && let Some(data) = image.get("data").and_then(JsonValue::as_str)
+        && data.len() <= 2_800_000
+        && let Ok(bytes) = STANDARD.decode(data)
+        && bytes.len() <= 2 * 1024 * 1024
+        && bytes.starts_with(b"\x89PNG\r\n\x1a\n")
+    {
+        content.push(serde_json::json!({"type":"inputImage","imageUrl":format!("data:image/png;base64,{data}")}));
+    }
+    serde_json::json!({"success":success,"contentItems":content})
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    #[ignore = "explicit anonymous public browser smoke; needs trusted runtime JSON, no model"]
+    async fn public_browser_host_bridge_returns_native_screenshot() {
+        use super::super::scoped_integrations::{
+            self, BrowserConfig, BrowserRuntime, IntegrationConfig, IntegrationGrant,
+        };
+        let file = std::env::var("CLAWMINGLE_BROWSER_SMOKE_RUNTIME_JSON")
+            .expect("runtime JSON must be provided explicitly");
+        let runtime: BrowserRuntime =
+            serde_json::from_slice(&std::fs::read(file).expect("runtime JSON readable"))
+                .expect("runtime JSON shape");
+        let scope = scoped_integrations::bind(
+            &IntegrationConfig {
+                browser: BrowserConfig {
+                    enabled: true,
+                    runtime: Some(runtime),
+                },
+                ..Default::default()
+            },
+            &IntegrationGrant {
+                browser: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let (_sender, cancel) = tokio::sync::watch::channel(false);
+        let result = scope
+            .call(
+                "public_browser",
+                r#"{"url":"https://example.com","wait_ms":250,"screenshot":true}"#,
+                cancel,
+            )
+            .await;
+        assert_eq!(
+            result["ok"],
+            true,
+            "public browser failed: {}",
+            result.get("error").unwrap_or(&serde_json::Value::Null)
+        );
+        // The public example page is multilingual; its visible heading is not fixed.
+        assert_eq!(result["title"], "Example Domain");
+        assert!(
+            result["text"]
+                .as_str()
+                .unwrap()
+                .contains("documentation examples")
+        );
+        assert!(result["resources_fetched"].as_u64().unwrap() > 0);
+        let response = social_tool_response(result, true);
+        assert_eq!(response["contentItems"].as_array().unwrap().len(), 2);
+        assert_eq!(response["contentItems"][1]["type"], "inputImage");
+        let text = response["contentItems"][0]["text"].as_str().unwrap();
+        let metadata: JsonValue = serde_json::from_str(text).unwrap();
+        assert!(metadata.get("image").is_none());
+        assert!(!text.contains("data:image"));
+    }
+
+    #[test]
+    fn browser_screenshots_are_native_images_and_never_json_text() {
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        let data = STANDARD.encode(b"\x89PNG\r\n\x1a\n");
+        let source = serde_json::json!({"ok":true,"text":"public page","image":{"mime_type":"image/png","data":data}});
+        let result = social_tool_response(source.clone(), true);
+        assert_eq!(result["contentItems"].as_array().unwrap().len(), 2);
+        assert_eq!(result["contentItems"][1]["type"], "inputImage");
+        assert!(
+            result["contentItems"][1]["imageUrl"]
+                .as_str()
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
+        assert!(
+            !result["contentItems"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains(&data)
+        );
+        assert_eq!(
+            social_tool_response(source, false)["contentItems"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        let invalid =
+            serde_json::json!({"ok":true,"image":{"mime_type":"image/png","data":"not_png"}});
+        assert_eq!(
+            social_tool_response(invalid, true)["contentItems"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+    }
     #[test]
     fn outcome_converts_to_simple_decision_string() {
         let cases = [
