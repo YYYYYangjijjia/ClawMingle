@@ -157,4 +157,4 @@ let msg = t!("commands.help.description");
 
 ## 10. 许可证
 
-本项目基于 [MIT License](LICENSE) 发布。提交代码即表示你同意以相同许可证授权你的贡献。
+本项目基于 [MIT License](../../LICENSE) 发布。提交代码即表示你同意以相同许可证授权你的贡献。

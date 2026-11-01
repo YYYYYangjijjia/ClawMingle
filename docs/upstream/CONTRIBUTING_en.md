@@ -157,4 +157,4 @@ When adding new commands, you must provide both Chinese and English command alia
 
 ## 10. License
 
-This project is released under the [MIT License](LICENSE). By submitting code, you agree to license your contributions under the same terms.
+This project is released under the [MIT License](../../LICENSE). By submitting code, you agree to license your contributions under the same terms.
