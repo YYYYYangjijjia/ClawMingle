@@ -1,300 +1,58 @@
 # ClawMingle
 
-ClawMingle 面向 QQ 多人群聊：由 Jev 判断参与和消息关系，Codex 处理回复与任务；应用维护追加、取消、上下文、投递和限流恢复。基于 [CodexClaw](https://github.com/Rhapsody0x1/CodexClaw) 开发，保留上游 MIT 许可与说明。
+[English](README_en.md) · [部署入口](docs/deploy.md) · [Agent 部署手册](docs/agent-deployment.md) · [管理台](docs/admin.md)
 
-## ClawMingle 从这里开始
+ClawMingle 是接入 QQ 官方机器人平台的 AI 群聊参与者。**Jev 判断何时接话、消息说给谁，以及是否在补充已有任务；Codex 负责回复和执行任务。** 应用处理连续短消息的合并、上下文选择、取消、投递和限流恢复。
 
-使用 Linux、Rust/Cargo、原生 Codex 和 Bubblewrap。原生工作环境验证基线为 Codex 0.161.0；完整依赖与独立运行目录见[准备流程](docs/native-runtime.md)。
+它基于 [CodexClaw](https://github.com/Rhapsody0x1/CodexClaw) 的 Rust 底座开发，重点是多人群聊中的参与时机和任务连续性。机器人使用独立的 Codex 认证与工作目录；每个群可以设置自己的互动风格、记忆和工具权限。
+
+## 部署：让 Agent 完成环境准备
+
+推荐把仓库交给能操作目标 Linux 机器的编程 Agent，由它按[部署手册](docs/agent-deployment.md)完成检查、构建和安装。你负责准备 QQ 机器人，并在本机或 SSH 隧道中的管理网页完成密码、凭据和群登记；**不需要把密钥发给 Agent**。
+
+可以这样交代：
+
+> 请在这台 Linux 机器部署 ClawMingle，仓库是 https://github.com/YYYYYangjijjia/ClawMingle 。先读仓库指导和 docs/agent-deployment.md，检查依赖与已有安装，按手册完成构建、安装和验证。管理台只允许本机或 SSH 隧道访问。QQ 密钥和机器人账号由我在网页配置；不要复用个人 Codex 的认证或历史。首次配置完成前只准备管理台，配置和登录完成后再启动机器人。保留已有数据，并说明验证结果与回滚方式。
+
+你需要准备什么、部署后如何操作，见[用户部署说明](docs/deploy.md)。当前支持路径为 Linux、官方 QQ 机器人、原生 Codex、Bubblewrap 和 Python 3.11+；常驻运行使用 systemd 用户服务。
+
+**管理台自带登录和首次初始化，不依赖 personal-dashboard。** 已有鉴权代理可以继续作为可选接入方式。安装与初始化是独立步骤；创建配置不会自动启动机器人。
+
+## 能做什么
+
+- **按场合参与**：只在被 @ 时回应、判断帮助需求、参与日常聊天，或逐条回应；群聊模式可单独设置。
+- **连续聊天与任务**：识别追加、修订和取消，合并适合共享输入的短回复，长任务按进展反馈。
+- **个性与记忆**：Identity、Soul、每群档案和可查阅、修订的分类记忆。
+- **多种消息与工具**：图片、平台语音转写、表情包、群文档、独立工作区及按会话授权的浏览器和扩展。
+- **自带管理台**：配置、机器人独立登录、群登记、服务状态和数据管理。
+
+首次配置默认仅 @ 回应，关闭私聊。模式和功能可以在管理台调整。参与判断和消息展示仍受模型与 QQ 平台能力影响，真实群聊效果需要按自己的场景验证。
+
+机器人接收的消息（包括未回复的消息）会保存到本地私有存档；裁剪模型上下文不会删除存档。群成员共享该群工作区，不能把它当作成员间私有空间。启用浏览器会准备独立运行依赖，其下载、系统库与磁盘要求见部署手册。
+
+## 使用文档
+
+| 想做什么 | 文档 |
+| --- | --- |
+| 了解部署流程和需要准备的账号 | [用户部署说明](docs/deploy.md) |
+| 让 Agent 检查、安装、验证、更新 | [Agent 部署手册](docs/agent-deployment.md) |
+| 管理配置、登录、人格、群档案和服务 | [管理台](docs/admin.md) |
+| 了解参与模式、命令和群聊行为 | [群聊运行说明](docs/social-pilot.md) |
+| 了解上下文、历史存档、合批与恢复 | [消息与上下文](docs/message-context.md) |
+| 管理记忆、长任务、表情和文档 | [记忆](docs/memory.md) · [长任务](docs/long-tasks.md) · [表情](docs/stickers.md) · [群文档](docs/group-documents.md) |
+| 配置隔离执行与扩展能力 | [原生环境](docs/native-runtime.md) · [浏览器](docs/native-browser.md) · [扩展授权](docs/scoped-integrations.md) |
+| 修改和验证代码 | [开发约定](docs/development.md) |
+
+[设计记录](docs/continuation-design.md)供开发者理解历史决策；安装和日常使用从上述操作指南进入。
+
+## 开发与上游
+
+构建本项目入口及两个运行辅助程序：
 
 ```sh
-cargo build --bins --locked
-target/debug/clawmingle --help
+cargo build --release --locked --bin clawmingle --bin clawmingle-hook-proxy --bin clawmingle-hook-input
 ```
 
-1. 将 [ClawMingle 示例配置](config/clawmingle.example.toml) 复制到仓库外私有目录；按[群聊指南](docs/social-pilot.md#配置和独立认证)配置 QQ/Jev 凭据、群白名单与机器人独立模型认证。不要将凭据填写到聊天或提交到 Git。
-2. 核对功能默认值：示例为 `mode-1`，启用私聊、会话工作区、每日记忆整理与表情自动收集；浏览器依赖会准备到私有目录，使用仍需会话授权。按实际需求调整后运行本地配置检查。
-3. 明确启动 `clawmingle`：
+`clawmingle` 是本项目的群聊入口；默认 `cargo run` 仍会启动上游 `codex-claw`。
 
-```sh
-target/debug/clawmingle check --config "$HOME/.config/clawmingle/social.toml"
-target/debug/clawmingle run --config "$HOME/.config/clawmingle/social.toml"
-```
-
-`check` 不连接真实服务，`run` 才接收消息；不会自动安装系统服务。`cargo run` 的默认目标仍是上游 `codex-claw`，不能替代上面的 ClawMingle 入口。
-
-所有收到的对话（包括静默消息）会在私有目录存档；图片、语音转写、记忆、素材与任务文件有各自的保存策略。查看[数据与上下文](docs/message-context.md)、[记忆](docs/memory.md)、[表情](docs/stickers.md)、[管理界面](docs/admin.md)和[开发验证](docs/development.md)。滚动上下文裁剪不会删除完整存档。管理界面另需经过鉴权的代理，不应直接暴露到公网。
-
-## 保留的上游 CodexClaw 文档
-
-以下原文描述上游 `codex-claw`，包括个人 Codex 会话导入和上游部署流程。它不描述 ClawMingle 的独立认证、隔离工作区及群聊运行方式；部署本仓库的 ClawMingle 请使用上面的入口和链接。
-
----
-
-<div align="center">
-
-<img src="./assets/banner.svg" width="600" alt="CodexClaw">
-
-由 [OpenAI Codex App-Server](https://developers.openai.com/codex/app-server) 驱动的 QQ 私人 AI 助理
-
-*Read this in: [English](README_en.md) | [中文](README.md)*
-
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-edition%202024-orange.svg)](https://www.rust-lang.org/)
-
-</div>
-
----
-
-CodexClaw 是一个构建于 Codex App Server 上、接入 QQ 官方机器人平台的私人 AI 助理。它允许你通过 QQ 来操作你电脑上的 Codex，从而完成各种任务。
-
-## 目录
-
-- [宇宙级安全声明](#宇宙级安全声明)
-- [为什么你又整了个 Claw？](#为什么你又整了个-claw)
-- [功能亮点](#功能亮点)
-- [快速开始](#快速开始)
-- [命令速查](#命令速查)
-- [定时任务](#定时任务)
-- [运行时文件](#运行时文件)
-- [文档](#文档)
-- [贡献指南](#贡献指南)
-- [给 Codex 看的部署说明](#给-codex-看的部署说明)
-
-## 宇宙级安全声明
-
-本项目*<u>**完全以 Vibe Coding 方式完成**</u>*，现以"按现状提供"为原则开源或分发。作者、贡献者及相关第三方不对本项目的**可用性、正确性、安全性、适用性、持续维护状态**或与任何特定用途的兼容性作出任何明示或默示保证。
-
-使用者应自行完成代码审查、环境隔离、权限控制、依赖审计、数据备份与上线验证，并自行判断本项目是否符合其所在地区、平台规则、组织制度及业务场景中的法律、合规、安全和运维要求。
-
-本项目可能**调用外部服务、读写本地文件、处理聊天消息**、上传或下载附件，并可能因模型输出、配置错误、依赖缺陷、平台接口变化或操作失误导致服务中断、数据泄露、误操作、额外费用、账号处罚或其他直接、间接、附带、特殊、惩罚性损失。除法律强制规定外，作者与贡献者对此不承担责任。
-
-在部署或使用本项目时，您**应妥善保管各类账号凭据、访问令牌、聊天数据与服务器权限，并自行承担由此产生的全部风险与后果**。若您不同意上述条件，请不要部署、复制、修改或使用本项目。
-
-## 为什么你又整了个 Claw？
-
-1. 我很讨厌 OpenClaw，它像个玩具，太重，而且一上来就要我电脑的完全访问权限；
-2. 比起 OpenClaw，Codex 的模型和 Harness 都很棒，而且 OpenAI 正在积极地维护它；
-3. Codex 订阅给的额度真的很多 👍；
-4. 这个项目在蹭 OpenClaw 的热度 : (
-
-一些其他的碎碎念可以看这篇 [Blog](https://rhapsody0x1.github.io/p/about-codex-claw)。
-
-## 功能亮点
-
-- **会话管理** &mdash; 前台/后台多会话并行，支持保存、恢复、导入系统 Codex 会话
-- **定时任务** &mdash; 内置 cron 调度器，支持提醒、Codex 执行、Shell 脚本和交互式多轮对话
-- **记忆蒸馏** &mdash; (实验性) 后台自动从对话中提取记忆，注入后续 prompt
-- **审批流程** &mdash; Codex 执行敏感操作前通过 QQ 请求用户审批，支持按会话自动放行
-- **自更新** &mdash; 通过 QQ 发送 `/self-update` 即可拉取最新代码、编译并热替换
-
-## 快速开始
-
-> 完整部署指南见 [docs/getting-started.md](docs/getting-started.md)
-
-1. 在你想要部署 CodexClaw 的设备上配置好 Codex 的登陆凭据或 API key，确认 `codex` 命令启动的 TUI 中可以正常和 Codex 进行对话；
-
-2. 前往 [QQ 开放平台](https://q.qq.com/)，按要求完成登陆和个人认证等操作；
-
-3. 在"首页"中，点击"机器人"，然后点击"创建 QQ 机器人"，获得的 AppID 和 AppSecret 记录下来备用；
-    ![image-20260410150111815](./assets/image-20260410150111815.png)
-4. 返回之前的首页，进入你新创建机器人的高级设置页面；
-    ![image-20260410150217404](./assets/image-20260410150217404.png)
-
-5. 下拉左侧栏，找到"回调配置"，在单聊事件中点击"全选"，保存；
-    ![image-20260410150539552](./assets/image-20260410150539552.png)
-
-6. 将第 3 步中获得的 AppID 和 AppSecret 填入下面的提示词中，发送给 Codex，它会帮你完成接下来的工作。注意，由于涉及到系统服务安装等行为，Codex **可能会请求执行一些提权命令，请谨慎检查这些命令的安全性，作者不对因此造成的损失承担任何责任**。如果不希望将密钥泄露给 Codex 的话，你也可以要求 Codex 引导你手工完成部署过程。
-
-```plain
-帮我在本机上部署 CodexClaw：https://github.com/Rhapsody0x1/CodexClaw ，我已经获取了你所需的 AppId: {} 和 AppSecret: {}。然后将其注册为系统服务，并为我提供管理其启用状态的命令。
-```
-
-7. CodexClaw 默认以允许网络访问的 workspace-write 沙盒模式启动 Codex，这能一定程度上保护你的设备安全。但由于各个平台的安全机制，沙盒可能导致 Codex 的一些能力无法正常发挥。目前作者观察到的问题：
-
-    - 在 macOS 上由于 Seatbelt 机制无法正常使用 Playwright 操作浏览器；
-    - 在 Linux 上因系统安全机制不能调用 apt 等系统级命令；
-
-    ~~如有条件，可以考虑在隔离的虚拟机/VPS 上以 danger-full-access 模式运行 Codex，这可以更好地发挥 Codex 的能力。至于如何修改配置，你可以询问万能的 Codex ; )~~ 目前项目已经迁移到了 Codex App Server，现在它可以向用户申请执行高于沙盒权限的命令。
-
-## 命令速查
-
-> 完整命令参考见 [docs/commands.md](docs/commands.md)
-
-如果想要享受 QQ 官方机器人提供的快捷命令，可手动将下面的命令添加到命令列表。当然，不添加也不影响它们的正常使用。
-
-| 命令 | 中文别名 | 说明 |
-|------|---------|------|
-| `/help` | `/帮助` | 查看命令列表 |
-| `/status` | `/状态` | 查看当前会话状态 |
-| `/new [dir]` | `/新建` | 新建前台会话 |
-| `/stop` | `/停止` | 结束当前会话 |
-| `/sessions` | `/会话` | 列出历史会话 |
-| `/model [name]` | `/模型` | 设置或查看模型 |
-| `/compact` | `/压缩` | 压缩会话上下文 |
-| `/self-update` | `/自更新` | 编译并热替换二进制 |
-
-<details>
-<summary>更多命令</summary>
-
-- `/interrupt` / `/中断`：仅停止当前运行，不结束会话
-- `/lang [en\|zh]` / `/语言`：切换界面语言
-- `/fast [on\|off]` / `/快速`：设置 Fast 模式
-- `/context [1m\|standard]` / `/上下文`：设置上下文模式
-- `/reasoning [low\|medium\|high\|xhigh]` / `/思考`：设置思考深度
-- `/verbose [on\|off]` / `/详细`：切换详细输出
-- `/save` / `/保存`：显式保存当前前台会话
-- `/bg [alias]` / `/后台`：将当前会话转入后台
-- `/fg [alias]` / `/前台`：切回指定或最近的后台会话
-- `/resume <id>` / `/恢复`：恢复磁盘会话
-- `/import` / `/导入`：导入系统 Codex 会话
-- `/loadbg <id> [alias]` / `/载入后台`：加载会话到后台
-- `/rename <old> <new>` / `/重命名`：重命名后台标签
-- `/alias` / `/别名`：管理命令别名
-- `/approvals` / `/审批`：切换审批策略
-- `/approve` / `/同意`：放行审批请求
-- `/deny` / `/拒绝`：拒绝审批请求
-- `/plan` / `/计划`：进入计划模式
-- `/cron` / `/定时`：管理定时任务
-
-</details>
-
-## 定时任务
-
-CodexClaw 内置 cron 调度器，支持以下类型的任务：
-
-| 类型 | 说明 |
-|------|------|
-| `reminder` | 在指定时间发送提醒消息 |
-| `codex` | 按计划执行 Codex 任务 |
-| `shell` | 按计划运行 Shell 命令或脚本 |
-| `interactive` | 按计划发起交互式多轮对话 |
-
-> 完整的调度器参考见 [docs/scheduler.md](docs/scheduler.md)
-
-## 运行时文件
-
-| 路径 | 说明 |
-|------|------|
-| `~/.codex-claw/codexclaw.toml` | 主配置文件 |
-| `~/.codex-claw/data/` | 运行时数据目录 |
-| `~/.codex-claw/.codex/` | 独立的 Codex 运行目录 |
-| `~/.codex-claw/data/session/` | 会话存储 |
-| `~/.codex-claw/data/memory/` | 记忆蒸馏数据 |
-| `~/.codex-claw/data/scheduler/` | 调度器持久化数据 |
-
-## 文档
-
-| 文档 | English |
-|------|---------|
-| [快速入门](docs/getting-started.md) | [Getting Started](docs/getting-started_en.md) |
-| [命令参考](docs/commands.md) | [Commands](docs/commands_en.md) |
-| [配置参考](docs/configuration.md) | [Configuration](docs/configuration_en.md) |
-| [定时任务](docs/scheduler.md) | [Scheduler](docs/scheduler_en.md) |
-| [系统架构](docs/architecture.md) | [Architecture](docs/architecture_en.md) |
-| [贡献指南](CONTRIBUTING.md) | [Contributing](CONTRIBUTING_en.md) |
-
-## 贡献指南
-
-本项目主要围绕作者的个人需求与兴趣演进。如果你有新的想法或使用场景，欢迎在 Discussion 中交流；如果你发现了明确的 Bug 或兼容性问题，也欢迎提交 Issue。对于功能建议，作者不保证一定会采纳、排期或长期维护。
-
-若你的需求较为个性化，或与当前路线不完全一致，你可以直接 fork 本仓库，并在其基础上继续定制。如果你做出了有趣的功能，作者主张你**通过分享你使用的 Prompt 或 Plan** 来实现功能的共享。
-
-详细的开发指南见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-## 给 Codex 看的部署说明
-
-1. 先检查基础环境，确认当前机器可联网，且已经安装 Rust 与 Codex CLI：
-
-```bash
-uname -a
-whoami
-pwd
-rustc --version
-cargo --version
-codex --version
-git --version
-```
-
-2. 如果缺少 Rust 工具链，则安装 Rust；如果缺少 `codex`，则先按当前官方方式安装，并要求用户完成登录。验收命令。若这一步失败，不要继续部署，先要求用户修复 Codex 运行环境与凭据问题。
-
-```bash
-codex exec --json "reply with exactly: ok"
-```
-
-3. 确认系统 Codex 目录 `~/.codex` 已存在，且至少包含 `config.toml` 与 `auth.json`。`codex-claw` 首次启动会将这些文件及 `skills/` 复制到 `~/.codex-claw/.codex/` 作为独立运行目录。
-
-4. 使用用户目录部署（无需提权），例如：
-
-```bash
-mkdir -p ~/.codex-claw
-cd ~/.codex-claw
-git clone https://github.com/Rhapsody0x1/CodexClaw.git repo
-cd repo
-```
-
-若目录已存在仓库，则改为：
-
-```bash
-cd ~/.codex-claw/repo
-git pull --ff-only
-```
-
-5. 创建运行配置文件，例如 `~/.codex-claw/codexclaw.toml`。将用户提供的 `AppID` 与 `AppSecret` 写入其中对应位置：
-
-```toml
-[general]
-data_dir = "~/.codex-claw/data"
-system_codex_home = "~/.codex"
-codex_home_global = "~/.codex-claw/.codex"
-default_workspace_dir = "~/.codex-claw/data/session/workspace"
-codex_binary = "codex"
-default_model = "gpt-5.4"
-default_reasoning_effort = "medium"
-self_repo_dir = "~/.codex-claw/repo"
-self_build_command = "cargo build --release"
-self_binary_path = "~/.codex-claw/repo/target/release/codex-claw"
-
-[qq]
-app_id = "YOUR_APP_ID"
-app_secret = "YOUR_APP_SECRET"
-api_base_url = "https://sandbox.api.sgroup.qq.com"
-token_url = "https://bots.qq.com/app/getAppAccessToken"
-
-[scheduler]
-enabled = true
-tick_secs = 30
-default_tz = "Asia/Shanghai"
-max_concurrent_jobs = 4
-max_turn_secs = 600
-max_attempts = 3
-retry_backoff_secs = 30
-circuit_breaker_threshold = 5
-runs_retention = 30
-```
-
-6. 先做一次编译检查，再构建 release：
-
-```bash
-cd ~/.codex-claw/repo
-cargo check
-cargo build --release
-```
-
-7. 用前台方式先启动一次，确认程序能正常连上 QQ Gateway，且没有明显配置错误：
-
-```bash
-cd ~/.codex-claw/repo
-CODEX_CLAW_CONFIG=~/.codex-claw/codexclaw.toml ./target/release/codex-claw
-```
-
-如果日志中出现 access token 获取失败、Gateway 连接失败或 Codex 启动失败，先停止并修复问题，再继续后续步骤。
-
-8. 注册为"用户级自启服务"时，需要按系统环境灵活处理（如 macOS `launchd`、Linux 用户级 `systemd`、其他 init 系统）。核心要求：
-- 工作目录指向 `~/.codex-claw/repo`
-- 设置 `CODEX_CLAW_CONFIG=~/.codex-claw/codexclaw.toml`
-- 启动命令为 `~/.codex-claw/repo/target/release/codex-claw`
-- 使用当前登录用户运行，不要求 root
-
-9. 启用并启动服务（命令因系统而异）。由于 `/self-update` 会替换当前运行中的二进制并退出当前进程，因此建议交给外部服务管理器负责重新拉起。
-
-10. 最后提醒从 QQ 客户端发送一条普通私聊消息进行联调，并检查服务日志。
+保留 CodexClaw 的 MIT 许可和署名，见 [LICENSE](LICENSE)。上游 README 完整存档于[中文](docs/upstream/README.md)和[English](docs/upstream/README_en.md)，其中个人会话导入和 `codex-claw` 部署步骤属于上游产品。ClawMingle 的独立配置和运行方式以本项目部署指南为准。

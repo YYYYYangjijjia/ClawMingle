@@ -1,12 +1,12 @@
 [Unit]
-Description=ClawMingle private administration
+Description=ClawMingle local administration
 After=network.target
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 WorkingDirectory=%h/.local/lib/clawmingle/admin
-ExecStart=%h/.local/share/clawmingle/admin-venv/bin/python -B %h/.local/lib/clawmingle/admin/clawmingle_admin.py --config %h/.config/clawmingle/social.toml --token-file %h/.config/clawmingle/admin-proxy.token --assets %h/.local/lib/clawmingle/admin/assets --port 17430
+ExecStart=%h/.local/lib/clawmingle/admin-venv/bin/python -B %h/.local/lib/clawmingle/admin/clawmingle_admin.py --standalone --init --config %h/.config/clawmingle/social.toml --binary %h/.local/lib/clawmingle/clawmingle --assets %h/.local/lib/clawmingle/admin/assets --port 17430
 Restart=always
 RestartSec=10
 UMask=0077
