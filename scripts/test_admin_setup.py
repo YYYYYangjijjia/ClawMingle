@@ -67,7 +67,7 @@ class SetupTests(unittest.TestCase):
     def test_settings_reject_injection_controls_and_invalid_model(self):
         for values in ({'app_id': '123\n'}, {'app_secret': chr(10)},
                        {'model': 'x"\n[other]'}, {'reasoning_effort': {}},
-                       {'codex_binary': 'relative/codex'}, {'jev_key': []}):
+                       {'codex_binary': 'relative/codex'}, {'jev_key': []}, {'browser_enabled': 'true'}, {'browser_enabled': 1}):
             with self.subTest(values=values), self.assertRaises(setup.SetupError):
                 self.settings(**values)
         self.assertEqual(list(self.config_dir.iterdir()), [])
@@ -92,6 +92,7 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(cfg['command_admins'], ['test_member'])
         self.assertEqual(cfg['mode'], 'mode-1')
         self.assertFalse(cfg['private_enabled'])
+        self.assertFalse(cfg['integrations']['browser']['enabled'])
         self.assertTrue(Path(cfg['data_dir']).is_absolute())
         self.assertEqual(qq_smoke.load_credentials(self.config_dir / 'qq.env')['QQ_APP_ID'], '123')
         runtime = tomllib.loads((self.app.data / 'runtime/codex/config.toml').read_text())
@@ -105,6 +106,23 @@ class SetupTests(unittest.TestCase):
         self.assertIsNone(self.app.settings)
         with self.assertRaises(setup.SetupError):
             self.app.post({'action': 'finish'})
+
+    def test_browser_opt_in_preserved_on_resave_and_written_to_config(self):
+        self.assertFalse(self.app.state()['defaults']['browser_enabled'])
+        self.ready(browser_enabled=True)
+        self.assertTrue(self.app.state()['settings']['browser_enabled'])
+        self.settings(app_secret='', jev_key='', model='other-model')
+        self.assertTrue(self.app.settings['browser_enabled'])
+        self.finish()
+        cfg = tomllib.loads(self.config.read_text())
+        self.assertTrue(cfg['integrations']['browser']['enabled'])
+
+    def test_browser_opt_in_can_be_disabled_before_finishing(self):
+        self.ready(browser_enabled=True)
+        self.settings(app_secret='', jev_key='', browser_enabled=False)
+        self.finish()
+        cfg = tomllib.loads(self.config.read_text())
+        self.assertFalse(cfg['integrations']['browser']['enabled'])
 
     def test_jev_is_optional_and_personal_auth_not_read(self):
         personal = self.home / '.codex'

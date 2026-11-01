@@ -23,6 +23,7 @@
         <label>Codex 程序路径<input name="codex_binary" required spellcheck="false"><small>安装程序发现的绝对路径；这里不会自动安装或登录 Codex。</small></label>
         <div class="columns"><label>模型<input name="model" required maxlength="128" spellcheck="false"></label><label>推理强度<select name="reasoning_effort"><option value="low">低</option><option value="medium">中</option><option value="high">高</option><option value="xhigh">极高</option></select></label></div>
       </details>
+      <label class="checkbox"><input type="checkbox" name="browser_enabled"><span>启用网页浏览器<small>首次启动需要下载依赖，可稍后在管理台开启。默认关闭不影响普通群聊和模型内置联网搜索。</small></span></label>
       <button type="submit">暂存连接设置</button><small id="credentials-note">完成初始化前，凭据仅保存在本次管理进程中；重启管理台后需重新填写。</small>
     </form>
   </section>

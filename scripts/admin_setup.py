@@ -104,9 +104,9 @@ class Setup:
                 websocket = False
             return {'setupRequired': self.pending, 'configured': self.settings is not None,
                     'configPath': str(self.config_path), 'dataPath': str(self.data),
-                    'defaults': {'model': 'gpt-6.1-sol', 'reasoning_effort': 'high',
+                    'defaults': {'model': 'gpt-6.1-sol', 'reasoning_effort': 'high', 'browser_enabled': False,
                                  'codex_binary': shutil.which('codex') or '/opt/codex/current/bin/codex'},
-                    'settings': ({key: self.settings[key] for key in ('app_id', 'model', 'reasoning_effort', 'codex_binary')} if self.settings else {}),
+                    'settings': ({key: self.settings[key] for key in ('app_id', 'model', 'reasoning_effort', 'codex_binary', 'browser_enabled')} if self.settings else {}),
                     'credentials': {'qq': bool(self.settings), 'jev': bool(self.settings and self.settings['jev_key'])},
                     'prerequisites': {'qqRegistrationAvailable': websocket,
                                       'binaryAvailable': self.binary.is_file() and os.access(self.binary, os.X_OK)},
@@ -137,7 +137,7 @@ class Setup:
 
     def _settings(self, body):
         require(set(body) <= {'action', 'app_id', 'app_secret', 'jev_key', 'model',
-                              'reasoning_effort', 'codex_binary'}, '连接设置包含未知字段。')
+                              'reasoning_effort', 'codex_binary', 'browser_enabled'}, '连接设置包含未知字段。')
         app_id = body.get('app_id')
         require(isinstance(app_id, str) and re.fullmatch(r'[0-9]{1,32}', app_id), 'QQ AppID 必须是平台提供的数字。')
         secret = body.get('app_secret')
@@ -157,10 +157,12 @@ class Setup:
         codex = body.get('codex_binary', shutil.which('codex') or '/opt/codex/current/bin/codex')
         require(isinstance(codex, str) and 0 < len(codex) <= 4096 and '\x00' not in codex
                 and Path(codex).is_absolute(), '请填写 Codex 可执行文件的绝对路径。')
+        browser = body.get('browser_enabled', self.settings['browser_enabled'] if self.settings else False)
+        require(type(browser) is bool, '浏览器开关必须为布尔值。')
         registration = dict(self.registration) if self.settings and self.settings['app_id'] == app_id and self.settings['app_secret'] == secret and self.registration.get('state') == 'matched' else None
         self._cancel()
         self.settings = {'app_id': app_id, 'app_secret': secret, 'jev_key': jev,
-                         'model': model, 'reasoning_effort': effort, 'codex_binary': codex}
+                         'model': model, 'reasoning_effort': effort, 'codex_binary': codex, 'browser_enabled': browser}
         self.registration = registration or {'state': 'idle', 'message': '连接设置已暂存，请登记群聊。'}
 
     def _start(self):
@@ -242,6 +244,7 @@ class Setup:
         config += '\n[jev]\n' + _toml({'credentials_file': str(jev_file)})
         config += '\n[codex]\n' + _toml({'binary': settings['codex_binary'], 'model': settings['model'],
                                           'reasoning_effort': settings['reasoning_effort']})
+        config += '\n[integrations.browser]\n' + _toml({'enabled': settings['browser_enabled']})
         runtime = _toml({'model': settings['model'], 'model_reasoning_effort': settings['reasoning_effort'],
                          'web_search': 'live', 'cli_auth_credentials_store': 'file'})
         created_files, created_dirs = [], []

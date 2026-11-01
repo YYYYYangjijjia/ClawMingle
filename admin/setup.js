@@ -21,7 +21,9 @@
     if (!initialized) {
       const settings = {...value.defaults, ...value.settings};
       for (const [key, field] of Object.entries(settings)) {
-        if ($('settings-form').elements.namedItem(key)) $('settings-form').elements.namedItem(key).value = field;
+        const input = $('settings-form').elements.namedItem(key);
+        if (input && input.type === 'checkbox') input.checked = Boolean(field);
+        else if (input) input.value = field;
       }
       initialized = true;
     }
@@ -56,7 +58,8 @@
   }
   $('settings-form').addEventListener('submit', async event => {
     event.preventDefault();
-    const saved = await action({action: 'save-settings', ...Object.fromEntries(new FormData(event.target))});
+    const saved = await action({action: 'save-settings', ...Object.fromEntries(new FormData(event.target)),
+      browser_enabled: event.target.elements.browser_enabled.checked});
     if (saved) {
       event.target.elements.app_secret.value = '';
       event.target.elements.jev_key.value = '';
