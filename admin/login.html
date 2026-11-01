@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · ClawMingle</title>
+  <link rel="stylesheet" href="/assets/login.css">
+  <script src="/assets/login.js" defer></script>
+</head>
+<body>
+  <main class="login-card">
+    <p class="eyebrow">CLAWMINGLE</p>
+    <h1 id="title">登录管理台</h1>
+    <p id="description">管理你的 QQ 群友与助手。</p>
+    <form id="login-form">
+      <label id="pairing-field" hidden>首次配对码
+        <input name="pairingCode" autocomplete="off" maxlength="128">
+        <small>在部署机器上由本人查看私有的 admin-bootstrap.json，填写其中 token 的值。请勿把配对码或密码发给 Agent。</small>
+      </label>
+      <label>管理密码
+        <input name="password" type="password" autocomplete="current-password" minlength="12" maxlength="256" required>
+        <small>至少 12 个字符。此密码仅用于 ClawMingle 管理台。</small>
+      </label>
+      <label id="confirmation-field" hidden>再次输入密码
+        <input name="confirmation" type="password" autocomplete="new-password" maxlength="256">
+      </label>
+      <p id="notice" role="status" aria-live="polite"></p>
+      <button id="submit" type="submit" disabled>正在连接…</button>
+    </form>
+    <p class="footer">通过本机地址或 SSH 隧道访问。首次设置后，可在网页登记 QQ 群并完成机器人登录。</p>
+  </main>
+</body>
+</html>

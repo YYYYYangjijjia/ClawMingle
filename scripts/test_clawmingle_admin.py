@@ -1306,10 +1306,21 @@ class InteractionAndStickerTests(AdminFixture):
             },
         }
         result = self.manager.integrations_public()
-        self.assertEqual(result, {'browser': {'configured': True}, 'plugins': [
+        self.assertEqual(result, {'browser': {'enabled': True, 'configured': True}, 'plugins': [
             {'id': 'docs', 'name': 'Public docs', 'tools': ['search'], 'read_only': True}]})
         self.manager.config['integrations']['browser'].pop('runtime')
         self.assertFalse(self.manager.integrations_public()['browser']['configured'])
+
+    def test_browser_toggle_preserves_runtime_and_uses_operator_transaction(self):
+        self.config['integrations'] = {'browser': {'enabled': False, 'runtime': {'node': '/trusted/node'}}}
+        self.write(self.config_path, admin.toml_dump(self.config))
+        self.manager.update_config({'section': 'browser', 'enabled': True})
+        persisted = tomllib.loads(self.config_path.read_text())
+        self.assertEqual(persisted['integrations']['browser'], {'enabled': True, 'runtime': {'node': '/trusted/node'}})
+        self.assertEqual(self.actions, ['stop', 'start'])
+        for value in ('true', 1, None):
+            with self.assertRaises(admin.AdminError):
+                self.manager.update_config({'section': 'browser', 'enabled': value})
 
     def test_conversation_grants_are_explicit_and_reject_unregistered_services(self):
         path = self.document()

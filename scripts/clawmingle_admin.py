@@ -1,4 +1,4 @@
-"""Private loopback management service; authenticated by the dashboard proxy.
+"""Private loopback management service; local login or an authenticated proxy.
 
 Standard library only. Does not expose an arbitrary command/file API. All bot
 mutations stop an idle bot, acquire its operator lock, validate, and restart it.
@@ -27,6 +27,7 @@ import tomllib
 import urllib.parse
 import urllib.request
 import codex_capabilities
+import admin_auth
 
 UNIT = 'clawmingle.service'
 MODES = {'mode-1', 'mode-2', 'mode-3', 'mode-all'}
@@ -442,7 +443,8 @@ class Manager:
                 browser_ready = type(manifest.get('version')) is int and manifest['version'] == 1 and manifest.get('browser_ready') is True
             except (AdminError, OSError, ValueError, TypeError, AttributeError):
                 pass
-        return {'browser': {'configured': bool(browser.get('enabled', True) and browser_ready)},
+        return {'browser': {'enabled': browser.get('enabled', True),
+                            'configured': bool(browser.get('enabled', True) and browser_ready)},
                 'plugins': [{'id': key, 'name': value.get('name', key),
                              'tools': value.get('allowed_tools', []), 'read_only': True}
                             for key, value in config.get('plugins', {}).items() if value.get('enabled', False)]}
@@ -877,6 +879,9 @@ class Manager:
                                           if r.get('status') not in {'completed', 'cancelled'})
                         require(all(ref is None or ref in presets for ref in references),
                                 '模型预设仍被会话或未完成请求使用，请先切换或取消相关请求。', 409)
+            elif section == 'browser':
+                require(set(body) == {'section', 'enabled'} and type(body.get('enabled')) is bool)
+                cfg.setdefault('integrations', {}).setdefault('browser', {})['enabled'] = body['enabled']
             elif section in {'tinyfish', 'tikhub'}:
                 self.configure_integration(cfg, body, save)
             elif section in {'qq', 'jev'}:
@@ -1838,13 +1843,28 @@ class Manager:
             return handlers[path](body)
 
 
-def handler_for(manager, token):
+def handler_for(manager, token, *, local_auth=None, setup=None, manager_factory=None):
+    manager_lock = threading.Lock()
+
+    def current_manager():
+        nonlocal manager
+        require(setup is None or not setup.pending, '请先完成首次初始化。', 409)
+        with manager_lock:
+            if manager is None:
+                require(manager_factory is not None, '管理配置尚未就绪。', 409)
+                manager = manager_factory()
+        return manager
+
     class Handler(BaseHTTPRequestHandler):
         server_version = 'ClawMingle'
+        def setup(self):
+            super().setup()
+            self.connection.settimeout(15)
+
         def log_message(self, *_):
             pass  # Do not put query strings, auth codes or credential data in logs.
 
-        def send(self, status, data, content_type='application/json; charset=utf-8'):
+        def send(self, status, data, content_type='application/json; charset=utf-8', headers=()):
             raw = json.dumps(data, ensure_ascii=False).encode() if isinstance(data, dict) else data
             self.send_response(status)
             self.send_header('Content-Type', content_type)
@@ -1853,42 +1873,90 @@ def handler_for(manager, token):
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.send_header('Referrer-Policy', 'no-referrer')
             self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'")
+            for name, value in headers:
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(raw)
 
         def authorized(self):
+            if local_auth is not None:
+                self.local_session = local_auth.session(self.headers)
+                return self.local_session is not None
             given = self.headers.get('X-CM-Dashboard-Proxy', '')
             return bool(given) and hmac.compare_digest(given.encode(), token)
 
+        def unauthorized(self):
+            if local_auth is not None:
+                return self.send(401, {'error': '请先登录管理台。', 'authMode': 'standalone', 'loginRequired': True})
+            return self.send(401, {'error': '请先通过已配置的管理入口登录。'})
+
+        def asset(self, name, kind):
+            assets = manager.assets if manager is not None else setup.assets
+            return self.send(200, (assets / name).read_bytes(), kind)
+
         def do_GET(self):
-            if not self.authorized():
-                return self.send(401, {'error': '请先通过个人主页管理员登录。'})
             try:
+                if local_auth is not None:
+                    local_auth.check_request(self.headers)
+                    public_files = {'/login': ('login.html', 'text/html; charset=utf-8'),
+                                    '/assets/login.js': ('login.js', 'text/javascript; charset=utf-8'),
+                                    '/assets/login.css': ('login.css', 'text/css; charset=utf-8')}
+                    if self.path == '/auth/status':
+                        return self.send(200, local_auth.status())
+                    if self.path in public_files:
+                        return self.asset(*public_files[self.path])
+                if not self.authorized():
+                    if local_auth is not None and self.path in {'/', '/setup'}:
+                        return self.send(302, b'', headers=[('Location', '/login')])
+                    return self.unauthorized()
+                if local_auth is not None:
+                    if self.path == '/api/bootstrap':
+                        return self.send(200, {'csrfToken': self.local_session['csrfToken'],
+                                              'authMode': 'standalone', 'setupRequired': bool(setup and setup.pending)})
+                    if self.path == '/api/setup':
+                        require(setup is not None, '首次初始化不可用。', 404)
+                        return self.send(200, setup.state())
+                    if self.path == '/setup':
+                        if setup is None or not setup.pending:
+                            return self.send(302, b'', headers=[('Location', '/')])
+                        return self.asset('setup.html', 'text/html; charset=utf-8')
+                    if self.path in {'/assets/setup.js', '/assets/setup.css'}:
+                        name = self.path.rsplit('/', 1)[1]
+                        return self.asset(name, 'text/javascript; charset=utf-8' if name.endswith('.js') else 'text/css; charset=utf-8')
+                    if self.path == '/' and setup and setup.pending:
+                        return self.send(302, b'', headers=[('Location', '/setup')])
+                active_manager = current_manager()
                 if self.path == '/health':
                     return self.send(200, {'ok': True})
                 if self.path == '/api/state':
-                    require(not manager.capability_busy(), '正在刷新账号应用目录，请稍后读取状态。', 409)
-                    with manager.mutex:
-                        value = manager.state()
+                    require(not active_manager.capability_busy(), '正在刷新账号应用目录，请稍后读取状态。', 409)
+                    with active_manager.mutex:
+                        value = active_manager.state()
                     return self.send(200, value)
                 if self.path == '/api/capabilities':
-                    require(not manager.capability_busy(), '正在刷新账号应用目录，请使用操作状态轮询。', 409)
-                    with manager.mutex:
-                        value = manager.capability_catalog()
+                    require(not active_manager.capability_busy(), '正在刷新账号应用目录，请使用操作状态轮询。', 409)
+                    with active_manager.mutex:
+                        value = active_manager.capability_catalog()
                     return self.send(200, value)
                 files = {'/': ('index.html', 'text/html; charset=utf-8'),
                          '/assets/app.js': ('app.js', 'text/javascript; charset=utf-8'),
                          '/assets/app.css': ('app.css', 'text/css; charset=utf-8')}
                 require(self.path in files, '没有此页面。', 404)
                 file, kind = files[self.path]
-                self.send(200, (manager.assets / file).read_bytes(), kind)
+                self.send(200, (active_manager.assets / file).read_bytes(), kind)
             except Exception as error:
                 self.error(error)
 
         def do_POST(self):
-            if not self.authorized():
-                return self.send(401, {'error': '请先通过个人主页管理员登录。'})
             try:
+                if local_auth is not None:
+                    local_auth.check_request(self.headers, write=True)
+                login = local_auth is not None and self.path in {'/auth/login', '/auth/enroll'}
+                if not login:
+                    if not self.authorized():
+                        return self.unauthorized()
+                    if local_auth is not None:
+                        local_auth.check_csrf(self.headers, self.local_session)
                 require(self.headers.get('Content-Type') == 'application/json', '只接受 JSON 请求。', 415)
                 require(not self.headers.get('Transfer-Encoding'), '不接受分块请求。')
                 try:
@@ -1904,12 +1972,26 @@ def handler_for(manager, token):
                 if length > 65536:
                     require(isinstance(body, dict) and self.path == '/api/config'
                             and body.get('section') == 'sticker_library', '请求体大小不正确。', 413)
-                self.send(200, manager.post(self.path, body))
+                if login:
+                    session = local_auth.authenticate(body, enroll=self.path == '/auth/enroll')
+                    return self.send(200, {'ok': True}, headers=[('Set-Cookie', local_auth.cookie(session))])
+                if local_auth is not None and self.path == '/auth/logout':
+                    require(body == {}, '退出请求无效。')
+                    local_auth.logout(self.local_session)
+                    return self.send(200, {'ok': True}, headers=[('Set-Cookie', local_auth.cookie('', clear=True))])
+                if local_auth is not None and self.path == '/api/setup':
+                    require(setup is not None, '首次初始化不可用。', 404)
+                    return self.send(200, setup.post(body))
+                self.send(200, current_manager().post(self.path, body))
             except Exception as error:
                 self.error(error)
 
         def error(self, error):
-            if isinstance(error, AdminError):
+            setup_errors = ()
+            if setup is not None:
+                from admin_setup import SetupError
+                setup_errors = (SetupError,)
+            if isinstance(error, (AdminError, admin_auth.AuthError, *setup_errors)):
                 self.send(error.status, {'error': str(error)})
             else:
                 self.send(500, {'error': '操作未完成；未展示可能含私有信息的底层错误。'})
@@ -1918,19 +2000,50 @@ def handler_for(manager, token):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--config', type=Path, required=True)
-    parser.add_argument('--token-file', type=Path, required=True)
+    parser.add_argument('--config', type=Path, default=Path.home() / '.config/clawmingle/social.toml')
+    authentication = parser.add_mutually_exclusive_group(required=True)
+    authentication.add_argument('--token-file', type=Path, help='Trusted authentication proxy only.')
+    authentication.add_argument('--standalone', action='store_true', help='Local/SSH-tunnel login; no external dashboard required.')
+    parser.add_argument('--init', action='store_true', help='Allow first browser password setup using a private one-time pairing file.')
     parser.add_argument('--binary', type=Path, default=Path.home() / '.local/lib/clawmingle/clawmingle')
-    parser.add_argument('--assets', type=Path, required=True)
+    source_assets = Path(__file__).resolve().parent / 'assets'
+    if not source_assets.is_dir():
+        source_assets = Path(__file__).resolve().parents[1] / 'admin'
+    parser.add_argument('--assets', type=Path, default=source_assets)
     parser.add_argument('--port', type=int, default=17430)
     args = parser.parse_args()
     require(1024 <= args.port <= 65535)
-    token = private_read(args.token_file).strip()
-    require(len(token) >= 32, '代理认证令牌无效。')
-    manager = Manager(args.config, args.binary, args.assets)
-    server = ThreadingHTTPServer(('127.0.0.1', args.port), handler_for(manager, token))
+    require(not args.init or args.standalone, '--init 仅用于独立管理台。')
+    args.config = args.config.expanduser().absolute()
+    args.binary = args.binary.expanduser().absolute()
+    args.assets = args.assets.expanduser().absolute()
+    setup = None
+    if args.standalone:
+        from admin_setup import Setup
+        require(not any((parent / '.git').exists() for parent in args.config.resolve().parents),
+                '管理配置和认证必须位于 Git 仓库之外。')
+        setup = Setup(args.config, args.binary, args.assets)
+        local_auth = admin_auth.LocalAuth(args.config.parent, args.port, initialize=args.init)
+        factory = lambda: Manager(args.config, args.binary, args.assets)
+        manager = None if setup.pending else factory()
+        handler = handler_for(manager, None, local_auth=local_auth, setup=setup, manager_factory=factory)
+    else:
+        token = private_read(args.token_file.expanduser()).strip()
+        require(len(token) >= 32, '代理认证令牌无效。')
+        manager = Manager(args.config, args.binary, args.assets)
+        handler = handler_for(manager, token)
+    server = ThreadingHTTPServer(('127.0.0.1', args.port), handler)
     server.daemon_threads = True
-    server.serve_forever(poll_interval=0.5)
+    if args.standalone:
+        print(f'ClawMingle 管理台：http://127.0.0.1:{args.port}', flush=True)
+        if local_auth.credentials is None:
+            print(f'首次配对文件（仅本人终端查看，不要发给 Agent 或贴到聊天）：{local_auth.bootstrap_path}', flush=True)
+    try:
+        server.serve_forever(poll_interval=0.5)
+    finally:
+        server.server_close()
+        if setup is not None:
+            setup.close()
 
 
 if __name__ == '__main__':

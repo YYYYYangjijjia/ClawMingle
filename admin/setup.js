@@ -1,7 +1,7 @@
 'use strict';
 (() => {
   const $ = id => document.getElementById(id);
-  let csrf = '', state = null, busy = false, initialized = false;
+  let csrf = '', state = null, busy = false, initialized = false, navigating = false;
   function notice(message, error = false) {
     $('notice').textContent = message;
     $('notice').classList.toggle('error', error);
@@ -17,7 +17,10 @@
   }
   function render(value) {
     state = value;
-    if (!value.setupRequired) { location.replace('/'); return; }
+    if (!value.setupRequired) {
+      if (!navigating) { navigating = true; location.replace('/'); }
+      return;
+    }
     if (!initialized) {
       const settings = {...value.defaults, ...value.settings};
       for (const [key, field] of Object.entries(settings)) {

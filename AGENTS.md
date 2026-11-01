@@ -63,6 +63,11 @@ The upstream guidance above is preserved. Follow [docs/development.md](docs/deve
 for ClawMingle's current scope and repository protections. Read `.local/DEVELOPMENT.md`
 when present for machine-specific paths and validation records; keep it ignored.
 
+For a user-requested installation, follow [docs/agent-deployment.md](docs/agent-deployment.md):
+the Agent handles preflight, build, installation and verification; the user enters
+credentials and completes account authorization in the local management UI.
+Do not use the upstream personal-session import flow for ClawMingle deployment.
+
 - Current agreed scope: an existing official QQ bot and the owner's two-person test
   group; Jev is the participation decision engine. Build the flow before evaluating
   decision accuracy. Long-term memory requires confirmation. Product implementation

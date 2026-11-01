@@ -19,6 +19,7 @@ ClawMingle 自带管理网页（`admin/`）和 Python 后端（`scripts/clawming
 ## 功能
 
 - 服务启动、停止、重启；进程状态、内存、自动重启次数、会话队列与失败数量。
+- 「任务与扩展 → 公共网页与文档查询」可启停全局浏览器，沿用空闲检查与配置事务；首次启用后，机器人启动时准备依赖，准备完成后再为会话授权。
 - QQ/Jev/Responses 兼容 Provider 配置；密钥留空保留、永不回填到浏览器。
 - TinyFish／TikHub 连接来源、独立 API Key 更换与清除、工具目录检查。TinyFish 可复用
   机器人 Codex 登录；TikHub 可复用现有专用配置，或在后台填写三个平台共用的独立密钥。

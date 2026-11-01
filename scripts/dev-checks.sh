@@ -19,6 +19,9 @@ python3 -B scripts/test_sensitive_data.py
 python3 -B scripts/test_qq_smoke.py
 python3 -B scripts/test_qq_panels.py
 python3 -B scripts/test_clawmingle_admin.py
+python3 -B scripts/test_admin_auth.py
+python3 -B scripts/test_admin_setup.py
+python3 -B scripts/test_install_clawmingle.py
 python3 -B scripts/test_prepare_native_runtime.py
 python3 -B scripts/test_native_browser.py
 node --test scripts/test_qq_documents_login.mjs

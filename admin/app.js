@@ -21,6 +21,7 @@
   const effortNames = { none: "不使用", minimal: "极低", low: "低", medium: "中", high: "高", xhigh: "最高", max: "最大" };
   let state = null;
   let csrfToken = null;
+  let standalone = false;
   let refreshing = false;
   let lastUpdated = null;
   let modalResolve = null;
@@ -77,7 +78,7 @@
   }
 
   async function api(path, body) {
-    if (body !== undefined && !csrfToken) throw new Error("管理权限尚未就绪，请返回 Dashboard 登录后刷新。");
+    if (body !== undefined && !csrfToken) throw new Error("管理权限尚未就绪，请登录后刷新。");
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 65000);
     const options = { credentials: "same-origin", cache: "no-store", signal: controller.signal, headers: { Accept: "application/json" } };
@@ -94,7 +95,10 @@
       if (!response.ok) {
         let message = typeof data.error === "string" ? data.error : data.error?.message;
         if (response.status === 409) message = message || "当前仍有请求正在处理，尚未应用修改。请空闲后重试。";
-        if (response.status === 401 || response.status === 403) message = "管理登录已过期，请返回 Dashboard 登录后刷新。";
+        if (response.status === 401 || response.status === 403) {
+          message = "管理登录已过期，请重新登录后刷新。";
+          if (response.status === 401 && (standalone || data.authMode === "standalone")) window.location.assign(new URL("login", base));
+        }
         throw new Error(message || "操作未完成，请稍后重试。");
       }
       return data;
@@ -108,11 +112,35 @@
   async function bootstrap() {
     try {
       const response = await fetch("/api/bootstrap", { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } });
-      if (!response.ok) throw new Error("管理登录尚未就绪，请返回 Dashboard 登录后刷新。");
       const data = await response.json();
+      if (!response.ok) {
+        if (data.authMode === "standalone") window.location.assign(new URL("login", base));
+        throw new Error("管理登录尚未就绪，请登录后刷新。");
+      }
+      standalone = data.authMode === "standalone";
+      if (standalone && data.setupRequired) {
+        window.location.replace(new URL("setup", base));
+        return false;
+      }
       csrfToken = typeof data.csrfToken === "string" && data.csrfToken ? data.csrfToken : null;
+      if (standalone && !$("#admin-sign-out")) {
+        const logout = element("button", "button secondary compact", "退出管理台");
+        logout.id = "admin-sign-out";
+        logout.addEventListener("click", async () => {
+          try {
+            const result = await fetch(new URL("auth/logout", base), { method: "POST", credentials: "same-origin",
+              headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken }, body: "{}" });
+            if (!result.ok) throw new Error("退出未完成，请重试。");
+            csrfToken = null;
+            window.location.replace(new URL("login", base));
+          } catch (error) { toast(error.message, true); }
+        });
+        $(".topbar-actions").append(logout);
+        const homeLink = $(".back-link");
+        if (homeLink) homeLink.hidden = true;
+      }
       if (currentView === "stickers" && stickerData === null) loadStickers();
-      if (!csrfToken) throw new Error("请先登录 Dashboard 管理员账号，再使用工作台。");
+      if (!csrfToken) throw new Error("请先登录管理员账号，再使用工作台。");
       return true;
     } catch (error) {
       showConnectionError(error.message);
@@ -1027,7 +1055,17 @@
     const browser = state?.config?.integrations?.browser;
     const row = element("div", "connection-row"), info = element("div");
     info.append(element("strong", "", "公共网页浏览"), element("small", "", "匿名渲染、文字读取和截图"));
-    row.append(element("span", "connection-logo", "↗"), info, element("span", `badge ${browser?.configured ? "success" : "neutral"}`, browser?.configured ? "已配置 · 按会话授权" : "尚未配置")); root.append(row);
+    row.append(element("span", "connection-logo", "↗"), info, element("span", `badge ${browser?.configured ? "success" : "neutral"}`, browser?.configured ? "已配置 · 按会话授权" : browser?.enabled ? "启用后等待准备" : "未启用"));
+    const toggle = element("button", "button secondary compact", browser?.enabled ? "停用浏览器" : "启用浏览器");
+    toggle.type = "button";
+    toggle.disabled = !csrfToken;
+    toggle.addEventListener("click", () => perform(toggle, async () => {
+      await api("config", {section: "browser", enabled: !browser?.enabled});
+      toast(browser?.enabled ? "网页浏览器已停用。" : "已启用；机器人启动时会准备浏览器，首次需要下载依赖。准备完成后可在会话设置中授权。");
+      await refreshState();
+    }));
+    info.append(element("small", "", "首次启用需下载依赖；普通聊天和内置搜索可独立使用。"));
+    row.append(toggle); root.append(row);
     for (const plugin of state?.config?.integrations?.plugins || []) {
       const row = element("div", "connection-row"), info = element("div");
       info.append(element("strong", "", plugin.name), element("small", "", `${(plugin.tools || []).length} 个已登记查询工具`));
@@ -1594,6 +1632,6 @@
   });
   showView(location.hash.slice(1), false);
   updateWriteAccess();
-  bootstrap().then(async () => { await refreshState(); if (currentView === "workflows") loadCapabilities(); });
+  bootstrap().then(async ready => { if (!ready) return; await refreshState(); if (currentView === "workflows") loadCapabilities(); });
   setInterval(() => { if (!document.hidden) refreshState(); }, 8000);
 })();
