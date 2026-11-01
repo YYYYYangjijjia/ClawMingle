@@ -39,7 +39,7 @@
 
 ### 浏览器条件
 
-启用浏览器且未指定已有运行环境时，机器人启动会自动在自己的私有目录准备固定版本 Node、Playwright 和 Chromium。它不会安装系统包。准备失败会阻止本次机器人启动，因此基础聊天部署应先检查设置，不要无意触发下载。
+独立首次设置默认关闭浏览器，不改变已有部署。用户可在首次设置勾选，也可之后在管理台开启全局浏览器开关，并为需要的会话授权。启用浏览器且未指定已有运行环境时，机器人启动会自动在自己的私有目录准备固定版本 Node、Playwright 和 Chromium。它不会安装系统包。准备失败会阻止本次机器人启动，因此基础聊天部署应先检查设置，不要无意触发下载。
 
 - 下载需可访问官方 Node、npm 和 Chromium 源。
 - Linux 系统需具备 Chromium 要求的共享库；安装器列出缺失项后，由机器正常的包管理流程补齐。
@@ -53,10 +53,10 @@
 在用户指定的源码根目录克隆仓库；已有仓库先检查工作区，不丢弃本地更改。进入仓库后运行安装器的只读计划：
 
 ```sh
-python3 -B scripts/install_clawmingle.py --plan
+python3 -B scripts/install_clawmingle.py --plan --build
 ```
 
-默认无参数也是计划模式：不构建、不写用户安装目录、不下载依赖、不启动服务。检查计划中的目标、依赖与阻塞原因。用户已经授权新部署且依赖齐全时：
+默认无参数也是计划模式：不构建、不写用户安装目录、不下载依赖、不启动服务。`--plan --build` 检查构建所需的前提，允许二进制尚未生成；单独 `--plan` 则检查已构建产物，没有产物会报告阻塞。读取 JSON 中的 `ready`、`dependencies`、`destinations` 和 `blockers`，修复阻塞后再继续。用户已经授权新部署且依赖齐全时：
 
 ```sh
 python3 -B scripts/install_clawmingle.py --apply --build --start-admin
@@ -81,9 +81,9 @@ python3 -B scripts/install_clawmingle.py --apply --binaries-dir "$PWD/target/rel
 | `~/.local/lib/clawmingle/admin-venv/` | 私有 Python 环境及群登记依赖。 |
 | `~/.config/systemd/user/` | `clawmingle.service`、`clawmingle-admin.service` 用户服务。 |
 
-安装器不调用 sudo、不安装系统软件、不调整网络规则，也不会启动机器人。相同安装可重复检查；现有未知文件或不同版本的冲突会停止，不能借安装步骤覆盖既有部署。首次配置需要新的数据目录，因此不要提前把 venv 或下载文件放进 `~/.local/share/clawmingle/`。
+安装器不调用 sudo、不安装系统软件、不调整网络规则，也不会启动机器人。首次成功安装后保存 `~/.local/lib/clawmingle/installation.json`，记录文件校验值、权限和服务程序路径。相同产物再次 `--apply` 时返回 `changed: false`，不重写安装文件、不重新安装 pip 依赖、不重复加载服务定义；显式的 `--start-admin`／`--enable-admin` 仍按参数执行。现有目录缺少该安装清单、安装文件被修改或候选版本不同都会停止，不能借安装步骤覆盖既有部署。首次配置需要新的数据目录，因此不要提前把 venv 或下载文件放进 `~/.local/share/clawmingle/`。
 
-`--start-admin` 只启动管理台；需要随用户服务启动时可在已授权范围内加 `--enable-admin`。两个参数均不启动机器人。安装器为服务设置经过筛选的程序路径，不复制整个 shell 环境；服务不能依赖未声明的交互式 shell 激活步骤。
+`--start-admin` 只启动管理台；需要随用户服务启动时可在已授权范围内加 `--enable-admin`。两个参数均不启动机器人。安装器为两个服务设置最小 `PATH`：私有 venv、已发现的 Codex／Bubblewrap／Node 入口目录，加常规系统程序目录，并去重、校验和转义；不复制整个 shell 环境。首次选择的路径保存到安装清单，重复安装沿用它。服务不能依赖未声明的交互式 shell 激活步骤。
 
 用户服务模板也可检查：[机器人](../config/clawmingle.service.example)、[管理台](../config/clawmingle-admin.service.example)。已有反向代理部署保持原认证方式，不能用独立模板覆盖它；见[代理接入](admin.md#可选鉴权代理)。
 
@@ -101,7 +101,7 @@ ssh -N -L 17430:127.0.0.1:17430 YOUR_USER@YOUR_HOST
 
 用户在自己的终端读取配对文件，输入网页并创建管理密码。首次注册后只存带盐密码哈希，配对文件删除；`--init` 留在服务参数中不会重新开放注册。
 
-随后用户在首次设置页填写 QQ 凭据、可选 Jev Key、模型设置，并通过以下方式之一登记：
+随后用户在首次设置页填写 QQ 凭据、可选 Jev Key和模型设置；浏览器选项默认关闭。随后通过以下方式之一登记：
 
 - 点击 QQ 登记，在有效期内于目标群真正 @ 机器人并发送当前一次性口令；登记者的成员 OpenID 成为首位群命令管理员。
 - 已知准确平台 OpenID 时，手动填写群 OpenID 与管理员成员 OpenID。
