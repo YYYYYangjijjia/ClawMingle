@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: "\U0001F4AC 使用问题 / Usage Questions"
-    url: https://github.com/Rhapsody0x1/CodexClaw/discussions/categories/q-a
-    about: 非 Bug 的使用疑问请到 Discussions 提问
+  - name: "\U0001F4AC 部署与常见问题 / Deployment FAQ"
+    url: https://github.com/YYYYYangjijjia/ClawMingle/blob/master/docs/deploy.md
+    about: 部署与使用问题请先查看部署说明中的常见问题

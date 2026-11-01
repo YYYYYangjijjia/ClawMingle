@@ -13,7 +13,7 @@ body:
     attributes:
       label: 功能描述 / Feature Description
       description: 简要描述你希望添加或改进的功能
-      placeholder: 例如：我希望 CodexClaw 能支持设置定时任务 ...
+      placeholder: 例如：我希望 ClawMingle 能支持设置定时任务 ...
     validations:
       required: true
 
@@ -22,7 +22,7 @@ body:
     attributes:
       label: 使用场景 / Use Case
       description: 描述你遇到的场景或痛点，帮助作者理解为什么需要这个功能
-      placeholder: 例如：CodexClaw 能每天自动地为我推送新闻，或处理 PR，会很有用 ...
+      placeholder: 例如：ClawMingle 能每天自动地为我推送新闻，或处理 PR，会很有用 ...
     validations:
       required: true
 
