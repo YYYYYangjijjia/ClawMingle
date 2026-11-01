@@ -1,0 +1,11 @@
+{
+  "name": "clawmingle-admin-ui-checks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test ui.spec.mjs --workers=1 --reporter=line"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

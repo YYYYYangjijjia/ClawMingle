@@ -4,6 +4,9 @@
 **/Thumbs.db
 __pycache__/
 *.py[cod]
+node_modules/
+/scripts/admin-ui/test-results/
+/scripts/admin-ui/playwright-report/
 
 # Machine-specific notes, configuration, credentials and environment files.
 /.local/

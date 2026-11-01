@@ -31,6 +31,21 @@ ClawMingle 在 CodexClaw 的 Rust 底座上渐进开发，保留上游许可、�
 新机器可使用 `mamba env create -f environment.dev.yml` 重建环境，再运行
 `mamba run -n clawmingle-dev bash scripts/dev-checks.sh`。此步骤不启动 Bot 或真实模型。
 
+管理界面的浏览器回归检查可独立运行，覆盖记忆编辑冲突、群／私聊草稿隔离、
+确认后入库、身份与性格分别保存及移动端布局。测试只读取本仓库静态页面，
+所有 API 均由虚构数据拦截，不连接运行中的管理台、QQ 或模型，也不依赖个人 Dashboard。
+在开发环境中准备并执行：
+
+```bash
+npm --prefix scripts/admin-ui ci
+cd scripts/admin-ui
+npx playwright install chromium
+npm test
+```
+
+浏览器安装是一次性开发准备；已有匹配的 Playwright 浏览器缓存可复用。
+这组测试独立于日常 `dev-checks.sh`，无需为纯 Rust 改动启动浏览器。
+
 - 使用既有 Cargo 工具链，按改动范围运行检查；文档与 Git 规则变更不启动 Rust 服务。
 - 运行测试前确认使用临时目录和虚构凭据；真实 QQ、模型和 Codex 集成检查单独安排。
 - 不继承个人 Codex 认证、Skills 或历史会话来运行群聊测试；当前上游启动默认行为尚未改造。
