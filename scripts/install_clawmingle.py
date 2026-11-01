@@ -41,7 +41,7 @@ def digest(path):
     return value.hexdigest()
 
 
-def check_path(path, *, private=False, regular=False):
+def check_path(path, *, private=False, regular=False, source=False):
     """Reject links, foreign owners and writable ancestors without changing them."""
     if not path.is_absolute() or '..' in path.parts:
         raise InstallError('Expected an absolute path without parent traversal: ' + str(path))
@@ -54,7 +54,11 @@ def check_path(path, *, private=False, regular=False):
                        and info.st_mode & stat.S_ISVTX)
         if stat.S_ISLNK(info.st_mode) or info.st_uid not in (0, os.getuid()):
             raise InstallError('Refusing a symlink or foreign-owned path: ' + str(item))
-        if info.st_mode & 0o022 and not sticky_root:
+        # A checkout already authorized for execution commonly uses umask 0002.
+        # Accept group writes only in that user's source tree, never at the
+        # installation destination or in root-owned/shared source ancestors.
+        forbidden_writes = 0o002 if source and info.st_uid == os.getuid() else 0o022
+        if info.st_mode & forbidden_writes and not sticky_root:
             raise InstallError('Refusing a group/other-writable path: ' + str(item))
         if item != path and not stat.S_ISDIR(info.st_mode):
             raise InstallError('Parent is not a directory: ' + str(item))
@@ -67,13 +71,14 @@ def check_path(path, *, private=False, regular=False):
                 raise InstallError('Expected a regular, unlinked file: ' + str(item))
 
 
-def native_binary(path):
+def native_binary(path, *, source=False):
     """Discover ELF files without executing a potentially JS-based Codex launcher."""
     try:
         resolved = path.resolve(strict=True)
         info = resolved.stat()
+        forbidden_writes = 0o002 if source and info.st_uid == os.getuid() else 0o022
         if (not stat.S_ISREG(info.st_mode) or info.st_uid not in (0, os.getuid())
-                or info.st_mode & 0o022 or not os.access(resolved, os.X_OK)):
+                or info.st_mode & forbidden_writes or not os.access(resolved, os.X_OK)):
             return None
         with resolved.open('rb') as stream:
             return resolved if stream.read(4) == b'\x7fELF' else None
@@ -212,8 +217,8 @@ class Installer:
             if allow_missing_binaries and mode == 0o700 and not source.exists():
                 continue
             # Cargo may hardlink debug binaries to its deps directory.
-            check_path(source)
-            if not source.is_file() or (mode == 0o700 and not native_binary(source)):
+            check_path(source, source=True)
+            if not source.is_file() or (mode == 0o700 and not native_binary(source, source=True)):
                 raise InstallError('Required artifact is missing or invalid: ' + str(source))
         return items
 

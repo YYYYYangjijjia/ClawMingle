@@ -171,6 +171,22 @@ class InstallationTests(unittest.TestCase):
             self.installer.apply()
         self.assertEqual(0o777, stat.S_IMODE(local.stat().st_mode))
 
+    def test_group_writable_checkout_is_copied_to_private_targets(self):
+        for path in (self.repository, *self.repository.rglob('*')):
+            path.chmod(path.stat().st_mode | 0o020)
+        self.installer.apply()
+        self.assertTrue(self.repository.stat().st_mode & 0o020)
+        for path in self.installer.root.rglob('*'):
+            self.assertFalse(path.stat().st_mode & 0o077, str(path))
+
+    def test_world_writable_source_is_rejected_without_chmod(self):
+        source = self.repository / 'scripts/admin_setup.py'
+        source.chmod(0o666)
+        with self.assertRaisesRegex(install.InstallError, 'writable'):
+            self.installer.apply()
+        self.assertEqual(0o666, stat.S_IMODE(source.stat().st_mode))
+        self.assertFalse(self.installer.root.exists())
+
     def test_pip_failure_rolls_back_only_new_paths(self):
         unrelated = self.home / '.config/systemd/user/another.service'
         self.write(unrelated, 'unrelated service')
