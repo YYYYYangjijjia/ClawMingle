@@ -20,6 +20,7 @@ struct StoredGroup {
 }
 
 pub fn private_directory(path: &Path) -> Result<()> {
+    ensure!(path.is_absolute(), "absolute_data_path_required");
     #[cfg(unix)]
     {
         use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};

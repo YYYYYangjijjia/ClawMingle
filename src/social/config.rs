@@ -14,6 +14,8 @@ pub const DEFAULT_SOUL: &str = "你是 Codex，一个有主见、略嘴欠的聪
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SocialConfig {
+    /// Raw defaults/TOML may use `~`; only `load` resolves them for filesystem use.
+    /// Programmatic callers must supply an absolute directory (tests: a tempdir).
     pub data_dir: PathBuf,
     pub qq_credentials_file: PathBuf,
     pub allowed_groups: Vec<String>,
@@ -304,6 +306,7 @@ impl SocialConfig {
     }
 
     pub fn validate(&self) -> Result<()> {
+        ensure!(self.data_dir.is_absolute(), "absolute_data_path_required");
         self.model_admission.validate()?;
         self.backup.validate(&self.data_dir)?;
         ensure!(

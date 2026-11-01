@@ -269,11 +269,12 @@ impl GroupMemoryStore {
     pub fn new(data_dir: impl AsRef<Path>, group_id: &str) -> Result<Self> {
         validate_id(group_id)?;
         let path = data_dir.as_ref();
-        let data_dir = if path.is_absolute() {
-            path.to_owned()
-        } else {
-            std::env::current_dir().map_err(io_error)?.join(path)
-        };
+        // Configuration expansion belongs to the caller. Resolving a raw `~/...`
+        // against cwd silently creates a second memory store in the repository.
+        if !path.is_absolute() {
+            return Err(GroupMemoryError::UnsafePath);
+        }
+        let data_dir = path.to_owned();
         // SAFETY: geteuid has no arguments and simply returns the process UID.
         let uid = unsafe { geteuid() };
         let store = Self {

@@ -44,6 +44,7 @@ id_rsa
 id_ed25519
 
 # Runtime state can contain conversations, attachments, tokens and memory.
+/~/
 /data/
 /logs/
 /backups/
