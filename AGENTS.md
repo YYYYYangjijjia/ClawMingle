@@ -62,7 +62,9 @@ Do not commit real QQ credentials or Codex auth material. Keep secrets in a loca
 ClawMingle extends the upstream module map with **`social/`**, the application
 composition layer for group/private conversations, participation decisions,
 request and delivery state, tasks, memory, stickers and document tools.
-`social/runtime.rs` owns worker orchestration; feature modules own their policies
+`social/runtime.rs` owns runtime setup and shared helpers;
+`social/runtime/worker.rs` owns per-conversation orchestration, with inline command
+and completion handling under `runtime/worker/`. Feature modules own their policies
 and handlers. `social/history.rs` persists conversation history in SQLite through
 `rusqlite`. The independent `src/bin/clawmingle.rs` entry depends on `social` and
 coexists with the upstream `app` / `main` entry. The management UI lives in

@@ -369,7 +369,9 @@ CodexClaw 基于 tokio 多线程运行时构建，使用以下异步模式：
 ## ClawMingle 架构补充
 
 上文保留上游 CodexClaw 架构。ClawMingle 的群聊和私聊应用层位于
-`src/social/`：`runtime.rs` 组装会话 worker，功能模块负责参与决策、消息历史、
+`src/social/`：`runtime.rs` 负责启动与共享辅助函数，`runtime/worker.rs` 保留每个
+会话的消息循环、任务所有权及持久化时序；`runtime/worker/inbound.rs` 内联处理
+收到的命令，`runtime/worker/completion.rs` 同步应用模型结果。功能模块负责参与决策、消息历史、
 请求与投递状态、任务、记忆、表情和文档；`history.rs` 通过 `rusqlite` 将对话历史
 持久化到 SQLite。管理界面位于 `admin/`，HTTP 宿主位于 `scripts/`。
 
