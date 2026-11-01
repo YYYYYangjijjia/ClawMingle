@@ -163,7 +163,7 @@ CodexClaw includes a built-in cron scheduler that supports the following types o
 | [Configuration Reference](../configuration_en.md) | [配置参考](../configuration.md) |
 | [Scheduler](../scheduler_en.md) | [定时任务](../scheduler.md) |
 | [Architecture](../architecture_en.md) | [系统架构](../architecture.md) |
-| [Contributing](../../CONTRIBUTING_en.md) | [贡献指南](../../CONTRIBUTING.md) |
+| [Contributing](CONTRIBUTING_en.md) | [贡献指南](CONTRIBUTING.md) |
 
 ## Contributing
 
@@ -171,7 +171,7 @@ This project primarily evolves around the author's personal needs and interests.
 
 If your needs are highly personalized or do not fully align with the current roadmap, you can fork this repository directly and continue customizing on top of it. If you build something interesting, the author encourages you to **share functionality by sharing the Prompts or Plans you used**.
 
-For detailed development guidelines, see [CONTRIBUTING.md](../../CONTRIBUTING_en.md).
+For detailed development guidelines, see [CONTRIBUTING.md](CONTRIBUTING_en.md).
 
 ## Deployment Instructions for Codex
 

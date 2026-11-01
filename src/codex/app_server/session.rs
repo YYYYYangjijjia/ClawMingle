@@ -263,7 +263,14 @@ impl AppServerSession {
         }
 
         let thread_id = self
-            .ensure_thread(&client, &request, &policy, &input.tools, native.as_ref())
+            .ensure_thread(
+                &client,
+                &request,
+                &policy,
+                &input.tools,
+                &input.tool_catalog,
+                native.as_ref(),
+            )
             .await
             .context("establish thread")?;
         // Every error after loading the thread uses the same ordered cleanup,
@@ -322,7 +329,8 @@ impl AppServerSession {
                     guard.set_qq_info(query.clone())?;
                 }
                 if let Some(query) = &input.stickers {
-                    guard.set_stickers(query.clone())?;
+                    guard
+                        .set_stickers(query.clone(), input.tool_catalog.sticker_action_policy()?)?;
                 }
             }
 
@@ -618,6 +626,7 @@ impl AppServerSession {
         request: &ExecutionRequest,
         policy: &TurnPolicy,
         tools: &[String],
+        tool_catalog: &super::ToolCatalog,
         native: Option<&super::native_session::NativeSession>,
     ) -> Result<String> {
         let mut desired_config = RuntimeConfigSignature::from_request(request);
@@ -695,7 +704,7 @@ impl AppServerSession {
             dynamic_tools: self
                 .supervisor
                 .is_isolated()
-                .then(|| super::social_tool_policy::definitions(tools)),
+                .then(|| super::social_tool_policy::definitions(tools, tool_catalog)),
             model: request.model.clone(),
             cwd: Some(request.workspace_dir.to_string_lossy().into_owned()),
             approval_policy: policy.approval_policy,

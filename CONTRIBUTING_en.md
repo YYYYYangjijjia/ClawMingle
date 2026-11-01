@@ -1,160 +1,66 @@
-# Contributing Guidelines
+# Contributing to ClawMingle
 
-> CodexClaw is a personal project by **Rhapsody0x1** -- a Rust QQ chat bot powered by OpenAI Codex.
-> Bug reports and discussions are welcome; feature requests are considered at the author's discretion.
-> You are also free to fork the project at any time to suit your own needs.
+[简体中文](CONTRIBUTING.md) · <b>English</b>
 
-*Read this in: [English](CONTRIBUTING_en.md) | [中文](CONTRIBUTING.md)*
+Thank you for your interest in ClawMingle! Bug reports, feedback, documentation improvements and code contributions are all welcome. ClawMingle is built on [CodexClaw](https://github.com/Rhapsody0x1/CodexClaw); the upstream contributing guide is archived at [docs/upstream/CONTRIBUTING_en.md](docs/upstream/CONTRIBUTING_en.md).
 
----
+## Before you start
 
-## 1. About
+- **Reporting issues**: use the issue templates. Redact screenshots and logs: never include an AppSecret, API key, cookie, group or member OpenID, or original chat content.
+- **Larger changes**, such as new features, a new chat-platform or agent-backend adapter, or changes to persisted formats: please open an issue to discuss the direction before writing code.
+- **Project conventions**: [`AGENTS.md`](AGENTS.md) describes the module map, layering rules and coding conventions, and [`docs/development.md`](docs/development.md) (Chinese) covers development boundaries and pre-commit checks. Both apply to human contributors and AI coding assistants.
 
-CodexClaw is a chat bot written in Rust that provides Codex capabilities through the QQ platform. The main directory structure is as follows:
+## Development environment
 
-| Path | Description |
-|------|-------------|
-| `src/main.rs` | Entry point and log initialization |
-| `src/lib.rs` | Module mapping |
-| `src/codex/` | Codex execution and event parsing |
-| `src/qq/` | QQ API and gateway handling |
-| `src/session/` | Persistent session state |
-| `src/app/` | Composition hub (`mod.rs`, `turn.rs`, `inbound.rs`, `approvals.rs`, `format.rs`) |
-| `src/commands/` | Slash-command dispatch (`mod.rs`, `alias.rs`, `cron_cmds.rs`, `interactive.rs`, `listing.rs`, `session_cmds.rs`, `settings_cmds.rs`) |
-| `src/scheduler/` | Cron job scheduler (`loop_.rs`, `ctx.rs`, `store.rs`, `runner.rs`, `interactive.rs`, `cron_expr.rs`, `cli.rs`) |
-| `src/memory/` | Per-user memory files (`store.rs`, `inject.rs`, `scan.rs`) |
-| `src/shadow/` | Background memory distillation (`memory.rs`, `prompt.rs`, `runner.rs`) |
-| `src/model/` | Pure value types (`message.rs`, `settings.rs`, `cron.rs`, `wire_compat.rs`) |
-| `src/util/` | Leaf utilities (`fs.rs`, `layout.rs`, `path.rs`, `lang.rs`, `text.rs`, `time.rs`) |
-| `src/self_update.rs` | Self-update from source |
-| `locales/` | Internationalization resource files (`en.yml`, `zh.yml`) |
-| `config/` | Example configuration files |
-| `data/` | Runtime state (not version-controlled) |
+The environment is declared in [`environment.dev.yml`](environment.dev.yml) and includes Rust, a C toolchain, Python 3.12 and Node.js 24:
 
----
-
-## 2. Development Setup
-
-1. Install the [Rust toolchain](https://rustup.rs/) (the stable channel is sufficient).
-2. Clone the repository and enter the project directory:
-   ```bash
-   git clone https://github.com/Rhapsody0x1/codex-claw.git
-   cd codex-claw
-   ```
-3. Copy the example configuration file and fill in your own credentials:
-   ```bash
-   cp config/codexclaw.example.toml codexclaw.toml
-   # Edit codexclaw.toml and fill in the QQ and OpenAI related keys
-   ```
-4. Specify the configuration path via environment variable (optional):
-   ```bash
-   export CODEX_CLAW_CONFIG=./codexclaw.toml
-   ```
-
----
-
-## 3. Build & Test
-
-| Command | Purpose |
-|---------|---------|
-| `cargo check` | Fast type checking without producing an executable |
-| `cargo build` | Build the debug version |
-| `cargo run` | Start the bot (reads `codexclaw.toml` from the current directory) |
-| `cargo test` | Run unit tests, integration tests, and doc tests |
-| `cargo fmt` | Format code |
-| `cargo clippy --all-targets --all-features` | Static analysis and lint checks |
-
-Before submitting, make sure `cargo fmt`, `cargo clippy`, and `cargo test` all pass.
-
----
-
-## 4. Code Style
-
-- Follow `rustfmt` default rules: 4-space indentation, trailing commas inserted by the formatter, one module per file.
-- Use `snake_case` for functions, modules, and test names; use `PascalCase` for type names.
-- Keep async boundaries clear; return `anyhow::Result` at application boundaries.
-- Avoid unnecessary `unwrap()`; prefer the `?` operator for error propagation.
-
----
-
-## 5. Testing
-
-- Async tests use the `#[tokio::test]` macro.
-- Unit tests should be placed alongside the corresponding module (in the same file or in a `tests` submodule in the same directory).
-- Cross-module integration tests that require a real Codex app-server process go in `tests/app_server_smoke.rs`.
-- Use `wiremock` to mock network calls and `tempfile` to manage temporary filesystem state.
-
-Example:
-
-```rust
-#[tokio::test]
-async fn test_session_persist() {
-    let dir = tempfile::tempdir().unwrap();
-    // ... test logic
-}
+```sh
+mamba env create -f environment.dev.yml
+git config --local core.hooksPath .githooks   # enables the sensitive-data checks before commit and push
 ```
 
----
+You can use an existing Rust, Python and Node setup instead of conda, provided the versions meet these requirements.
 
-## 6. Commit Conventions
+## Building and checks
 
-Use the **Conventional Commits** style with short imperative subject lines. Supported prefixes:
-
-| Prefix | Purpose | Example |
-|--------|---------|---------|
-| `feat` | New feature | `feat(qq): add group message handler` |
-| `fix` | Bug fix | `fix(session): prevent duplicate writes` |
-| `refactor` | Code refactoring | `refactor(codex): simplify event parser` |
-| `doc` | Documentation update | `doc(README): update setup instructions` |
-| `test` | Adding or modifying tests | `test(session): add persistence coverage` |
-| `chore` | Maintenance tasks (CI, dependencies, etc.) | `chore(deps): bump tokio to 1.35` |
-
-Breaking changes use the `!` suffix (e.g., `feat!:` or `refactor!:`).
-
-Each commit should contain only one logical change. If the change involves a specific module, indicate the scope in parentheses after the prefix, e.g., `feat(scheduler): add cron support`.
-
----
-
-## 7. Pull Request Process
-
-1. Create a feature branch from the `master` branch.
-2. Ensure all checks pass: `cargo fmt`, `cargo clippy --all-targets --all-features`, `cargo test`.
-3. When submitting a PR, please describe in the description:
-   - What behavioral changes were made and why
-   - The test commands that were run
-   - Related issues (if any)
-4. PRs will be reviewed by the author before deciding whether to merge. Whether functional PRs are accepted depends on the project direction; please discuss in an Issue or Discussion beforehand.
-
----
-
-## 8. Internationalization
-
-CodexClaw uses `rust_i18n` to provide bilingual support. Translation resource files are located at:
-
-- `locales/en.yml` -- English
-- `locales/zh.yml` -- Chinese
-
-Use the `rust_i18n::t!` macro in code to retrieve translated text:
-
-```rust
-use rust_i18n::t;
-
-let msg = t!("commands.help.description");
+```sh
+# Full offline checks: Rust formatting, Clippy and tests, plus the Python and Node tests
+mamba run -n clawmingle-dev bash scripts/dev-checks.sh
 ```
 
-When adding new commands, you must provide both Chinese and English command aliases so that users of both languages can invoke them normally. When modifying or adding text, please update both locale files accordingly.
+For Rust-only changes, at least run:
 
----
+```sh
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings   # must have zero warnings
+cargo test --all-targets
+```
 
-## 9. Security
+These checks do **not** start the bot or connect to the real QQ or model services. Integration tests that need a real Codex binary are ignored by default and run manually only when needed.
 
-- **Never** commit real QQ credentials, OpenAI API keys, or any other secrets.
-- All sensitive information should be stored in a local TOML configuration file and loaded via the `CODEX_CLAW_CONFIG` environment variable.
-- The `data/` directory is for runtime state and should not be version-controlled.
-- If you discover a security vulnerability, please contact the author privately via an Issue or email; do not disclose it publicly.
+## Code conventions
 
----
+- **Layering**: follow the dependency layers in `AGENTS.md`. Lower layers (such as `codex/`) must not depend on higher layers (such as `social/`); inject what they need through registration interfaces instead.
+- **Persisted compatibility**: add `#[serde(default)]` to new fields on persisted types. The snapshot tests in `src/model/wire_compat.rs` guard the on-disk format.
+- **Test placement**: tests live next to the code in `#[cfg(test)] mod tests`. Use `#[tokio::test]` for async tests, `wiremock` to mock network calls and `tempfile` for temporary files.
+- **Paths**: paths written to disk must be absolute. Use temporary directories in tests, and do not rely on the `~` in default configuration.
+- **Fail clearly**: do not hide errors behind silent fallbacks, and never loosen isolation, permissions or authentication just to make a check pass.
+- **i18n**: user-visible text goes through the `t!` macro; update both `locales/en.yml` and `locales/zh.yml`.
 
-## 10. License
+## Commits and pull requests
 
-This project is released under the [MIT License](LICENSE). By submitting code, you agree to license your contributions under the same terms.
+- Follow [Conventional Commits](https://www.conventionalcommits.org/), for example `feat(social): ...`, `fix(admin): ...`, `docs: ...`.
+- Keep each commit to one logical change, and commit pure refactors separately from behavior changes.
+- In the PR description, describe the behavior change, list the checks you actually ran and link related issues. Screenshots are only needed for UI or message-format changes.
+- When behavior changes, update the relevant documents in `docs/`.
+
+## Security and privacy
+
+- Never commit real credentials, server addresses, identifiers, chat logs, runtime data (`data/`, backups, logs) or personal Codex authentication.
+- Use obvious placeholders such as `YOUR_HOST` in examples.
+- `.gitignore` does not protect files that are already tracked or anything in history. Run `python3 -B scripts/check_sensitive_data.py --staged` before committing; the hooks run this check for you.
+- If you find a security issue, do not post exploit details in a public issue; contact the maintainer through an issue first.
+
+## License
+
+ClawMingle is released under the [MIT License](LICENSE). By contributing, you agree to license your contributions under the same terms.

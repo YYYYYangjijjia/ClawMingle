@@ -261,6 +261,17 @@ async fn isolated_social_turn_returns_structured_weather_with_source_url() {
             request,
             schema,
             codex_claw::codex::app_server::SocialTurnInput {
+                tool_catalog: codex_claw::codex::app_server::ToolCatalog::new(
+                    vec![
+                        codex_claw::social::identity_tool_schema(),
+                        codex_claw::social::group_profile_tool_schema(),
+                        codex_claw::social::document_tool_schema(),
+                        codex_claw::social::sticker_tool_schema(false),
+                        codex_claw::social::sticker_tool_schema(true),
+                    ],
+                    codex_claw::social::sticker_tool_action_allowed,
+                )
+                .expect("social tool declarations"),
                 steer: None,
                 messages: None,
                 images: Vec::new(),

@@ -163,7 +163,7 @@ CodexClaw 内置 cron 调度器，支持以下类型的任务：
 | [配置参考](../configuration.md) | [Configuration](../configuration_en.md) |
 | [定时任务](../scheduler.md) | [Scheduler](../scheduler_en.md) |
 | [系统架构](../architecture.md) | [Architecture](../architecture_en.md) |
-| [贡献指南](../../CONTRIBUTING.md) | [Contributing](../../CONTRIBUTING_en.md) |
+| [贡献指南](CONTRIBUTING.md) | [Contributing](CONTRIBUTING_en.md) |
 
 ## 贡献指南
 
@@ -171,7 +171,7 @@ CodexClaw 内置 cron 调度器，支持以下类型的任务：
 
 若你的需求较为个性化，或与当前路线不完全一致，你可以直接 fork 本仓库，并在其基础上继续定制。如果你做出了有趣的功能，作者主张你**通过分享你使用的 Prompt 或 Plan** 来实现功能的共享。
 
-详细的开发指南见 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
+详细的开发指南见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 给 Codex 看的部署说明
 

@@ -4,7 +4,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        欢迎在这里讨论任何与 CodexClaw 相关的话题！
+        欢迎在这里讨论任何与 ClawMingle 相关的话题！
   - type: textarea
     id: body
     attributes:

@@ -1,160 +1,66 @@
-# 贡献指南
+# 参与贡献 ClawMingle
 
-> CodexClaw 是 **Rhapsody0x1** 的个人项目——一个基于 OpenAI Codex 的 Rust QQ 机器人。
-> 欢迎提交 Bug 报告和参与讨论；功能建议将由作者酌情采纳。
-> 你也可以随时 Fork 本项目来满足个性化需求。
+<b>简体中文</b> · [English](CONTRIBUTING_en.md)
 
-*Read this in: [English](CONTRIBUTING_en.md) | [中文](CONTRIBUTING.md)*
+感谢你愿意参与 ClawMingle！这里欢迎 Bug 报告、使用反馈、文档改进和代码贡献。ClawMingle 基于 [CodexClaw](https://github.com/Rhapsody0x1/CodexClaw) 开发，上游原有的贡献指南存档在 [docs/upstream/CONTRIBUTING.md](docs/upstream/CONTRIBUTING.md)。
 
----
+## 开始之前
 
-## 1. 项目背景
+- **报告问题**：请使用 Issue 模板。截图和日志务必脱敏，不要包含 AppSecret、API Key、Cookie、群或成员 OpenID、聊天原文。
+- **较大的改动**：比如新功能、新的聊天平台或 Agent 后端适配、改变持久化格式，请先开 Issue 讨论方向，再动手写代码。
+- **项目约定**：仓库根目录的 [`AGENTS.md`](AGENTS.md) 描述模块结构、分层规则和编码约定，[`docs/development.md`](docs/development.md) 描述开发边界与提交前检查。人类贡献者和 AI 编程助手都应遵守。
 
-CodexClaw 是一个使用 Rust 编写、通过 QQ 平台提供 Codex 能力的聊天机器人。主要目录结构如下：
+## 开发环境
 
-| 路径 | 说明 |
-|------|------|
-| `src/main.rs` | 启动入口与日志初始化 |
-| `src/lib.rs` | 模块映射 |
-| `src/codex/` | Codex 执行与事件解析 |
-| `src/qq/` | QQ API 与网关处理 |
-| `src/session/` | 持久化会话状态 |
-| `src/app/` | 组合中枢 (`mod.rs`, `turn.rs`, `inbound.rs`, `approvals.rs`, `format.rs`) |
-| `src/commands/` | 斜杠命令分发 (`mod.rs`, `alias.rs`, `cron_cmds.rs`, `interactive.rs`, `listing.rs`, `session_cmds.rs`, `settings_cmds.rs`) |
-| `src/scheduler/` | Cron 任务调度 (`loop_.rs`, `ctx.rs`, `store.rs`, `runner.rs`, `interactive.rs`, `cron_expr.rs`, `cli.rs`) |
-| `src/memory/` | 用户记忆文件 (`store.rs`, `inject.rs`, `scan.rs`) |
-| `src/shadow/` | 后台记忆蒸馏 (`memory.rs`, `prompt.rs`, `runner.rs`) |
-| `src/model/` | 纯数据类型 (`message.rs`, `settings.rs`, `cron.rs`, `wire_compat.rs`) |
-| `src/util/` | 叶子工具模块 (`fs.rs`, `layout.rs`, `path.rs`, `lang.rs`, `text.rs`, `time.rs`) |
-| `src/self_update.rs` | 从源码自更新 |
-| `locales/` | 国际化资源文件 (`en.yml`, `zh.yml`) |
-| `config/` | 配置文件示例 |
-| `data/` | 运行时状态（不纳入版本控制） |
+开发环境由 [`environment.dev.yml`](environment.dev.yml) 声明，包括 Rust、C 编译工具链、Python 3.12 和 Node.js 24：
 
----
-
-## 2. 开发环境
-
-1. 安装 [Rust 工具链](https://rustup.rs/)（stable channel 即可）。
-2. 克隆仓库并进入项目目录：
-   ```bash
-   git clone https://github.com/Rhapsody0x1/codex-claw.git
-   cd codex-claw
-   ```
-3. 复制配置文件并填写自己的凭据：
-   ```bash
-   cp config/codexclaw.example.toml codexclaw.toml
-   # 编辑 codexclaw.toml，填入 QQ 和 OpenAI 相关密钥
-   ```
-4. 通过环境变量指定配置路径（可选）：
-   ```bash
-   export CODEX_CLAW_CONFIG=./codexclaw.toml
-   ```
-
----
-
-## 3. 构建与测试
-
-| 命令 | 用途 |
-|------|------|
-| `cargo check` | 快速类型检查，不产生可执行文件 |
-| `cargo build` | 构建调试版本 |
-| `cargo run` | 启动机器人（读取当前目录下的 `codexclaw.toml`） |
-| `cargo test` | 运行单元测试、集成测试和文档测试 |
-| `cargo fmt` | 格式化代码 |
-| `cargo clippy --all-targets --all-features` | 静态分析与 lint 检查 |
-
-提交前请确保 `cargo fmt`、`cargo clippy` 和 `cargo test` 全部通过。
-
----
-
-## 4. 代码风格
-
-- 遵循 `rustfmt` 默认规则：4 空格缩进，格式化器自动插入尾逗号，每个模块对应一个文件。
-- 函数、模块和测试名使用 `snake_case`，类型名使用 `PascalCase`。
-- 保持 async 边界清晰，在应用边界处返回 `anyhow::Result`。
-- 避免不必要的 `unwrap()`，优先使用 `?` 操作符进行错误传播。
-
----
-
-## 5. 测试指南
-
-- 异步测试使用 `#[tokio::test]` 宏。
-- 单元测试应放在对应模块旁边（同文件或同目录的 `tests` 子模块）。
-- 需要真实 Codex app-server 进程的跨模块集成测试放在 `tests/app_server_smoke.rs`。
-- 使用 `wiremock` 模拟网络调用，使用 `tempfile` 管理临时文件系统状态。
-
-示例：
-
-```rust
-#[tokio::test]
-async fn test_session_persist() {
-    let dir = tempfile::tempdir().unwrap();
-    // ... 测试逻辑
-}
+```sh
+mamba env create -f environment.dev.yml
+git config --local core.hooksPath .githooks   # 启用提交与推送前的敏感数据检查
 ```
 
----
+如果你已经有可用的 Rust/Python/Node 环境，也可以不用 conda，但版本需要满足上述要求。
 
-## 6. 提交规范
+## 构建与检查
 
-使用 **Conventional Commits** 风格，主题行为简短的祈使句。支持的前缀：
-
-| 前缀 | 用途 | 示例 |
-|------|------|------|
-| `feat` | 新功能 | `feat(qq): add group message handler` |
-| `fix` | 修复缺陷 | `fix(session): prevent duplicate writes` |
-| `refactor` | 重构代码 | `refactor(codex): simplify event parser` |
-| `doc` | 文档更新 | `doc(README): update setup instructions` |
-| `test` | 添加或修改测试 | `test(session): add persistence coverage` |
-| `chore` | 维护任务（CI、依赖等） | `chore(deps): bump tokio to 1.35` |
-
-带有破坏性变更时，在前缀后添加 `!` 后缀（例如 `feat!:` 或 `refactor!:`）。
-
-每个 commit 应当只包含一个逻辑变更。如果变更涉及特定模块，请在前缀后用括号标注作用域，例如 `feat(scheduler): add cron support`。
-
----
-
-## 7. PR 流程
-
-1. 从 `master` 分支创建功能分支。
-2. 确保所有检查通过：`cargo fmt`、`cargo clippy --all-targets --all-features`、`cargo test`。
-3. 提交 PR 时请在描述中说明：
-   - 行为变更的内容和原因
-   - 运行过的测试命令
-   - 关联的 Issue（如有）
-4. PR 将由作者 Review 后决定是否合并。功能性 PR 是否被接受取决于项目方向，请提前在 Issue 或 Discussion 中讨论。
-
----
-
-## 8. 国际化
-
-CodexClaw 使用 `rust_i18n` 提供双语支持。翻译资源文件位于：
-
-- `locales/en.yml` — 英文
-- `locales/zh.yml` — 中文
-
-在代码中使用 `rust_i18n::t!` 宏获取翻译文本：
-
-```rust
-use rust_i18n::t;
-
-let msg = t!("commands.help.description");
+```sh
+# 完整的离线检查：Rust 格式、Clippy、测试，以及 Python 与 Node 测试
+mamba run -n clawmingle-dev bash scripts/dev-checks.sh
 ```
 
-添加新命令时，必须同时提供中文和英文的命令别名（alias），确保两种语言的用户都能正常调用。修改或新增文本时请同步更新两个 locale 文件。
+只改 Rust 代码时，至少运行：
 
----
+```sh
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings   # 必须 0 警告
+cargo test --all-targets
+```
 
-## 9. 安全须知
+这些检查**不会**启动机器人，也不会连接真实的 QQ 或模型服务。需要真实 Codex 的集成测试默认被忽略，只在明确需要时手动运行。
 
-- **绝对不要** 提交真实的 QQ 凭据、OpenAI API Key 或任何其他密钥。
-- 所有敏感信息应存放在本地 TOML 配置文件中，通过 `CODEX_CLAW_CONFIG` 环境变量加载。
-- `data/` 目录为运行时状态目录，不应纳入版本控制。
-- 如果发现安全漏洞，请通过 Issue 私信或邮件联系作者，不要公开披露。
+## 代码约定
 
----
+- **分层**：按 `AGENTS.md` 中的依赖分层组织代码。底层模块（如 `codex/`）不能反向依赖上层模块（如 `social/`），需要时通过注册接口注入。
+- **持久化兼容**：持久化类型新增的字段要加 `#[serde(default)]`。`src/model/wire_compat.rs` 中的快照测试负责保护磁盘格式。
+- **测试位置**：测试写在源文件旁的 `#[cfg(test)] mod tests` 中。异步测试用 `#[tokio::test]`，网络调用用 `wiremock` 模拟，临时文件用 `tempfile`。
+- **路径**：写盘路径必须是绝对路径。测试中使用临时目录，不要依赖默认配置里的 `~`。
+- **失败要明确**：不要用静默回退掩盖错误；也不要为了让检查通过而放宽隔离、权限或认证。
+- **国际化**：用户可见的文本使用 `t!` 宏，并同步更新 `locales/en.yml` 和 `locales/zh.yml`。
 
-## 10. 许可证
+## 提交与 Pull Request
 
-本项目基于 [MIT License](LICENSE) 发布。提交代码即表示你同意以相同许可证授权你的贡献。
+- 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/)，例如 `feat(social): ...`、`fix(admin): ...`、`docs: ...`。
+- 每个提交只做一件事。纯重构和行为修改分开提交。
+- PR 描述需要说明行为变化、实际运行过的检查命令，以及关联的 Issue。只有改动界面或消息格式时才需要截图。
+- 行为变化要同步更新 `docs/` 中的相关文档。
+
+## 安全与隐私
+
+- 不要提交任何真实凭据、服务器地址、身份标识、聊天记录、运行数据（`data/`、备份、日志）或个人 Codex 认证。
+- 示例一律使用明显的占位符，例如 `YOUR_HOST`。
+- `.gitignore` 不能保护已跟踪的文件和历史记录。提交前请运行 `python3 -B scripts/check_sensitive_data.py --staged`，钩子会自动执行这一检查。
+- 发现安全问题时，请不要在公开 Issue 中贴出利用细节，先通过 Issue 联系维护者。
+
+## 许可
+
+ClawMingle 以 [MIT License](LICENSE) 发布。提交贡献即表示你同意以相同许可授权你的贡献。

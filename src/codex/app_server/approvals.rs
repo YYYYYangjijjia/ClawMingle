@@ -304,17 +304,18 @@ impl ApprovalBroker {
                         result=&mut query=>result.unwrap_or_else(|_|serde_json::json!({"ok":false,"error":{"code":"message_read_failed","message":"未能读取消息存档。"}})),
                     }
                 } else if matches!(call.tool.as_str(), "sticker_lookup" | "sticker_manage") {
-                    if !crate::social::sticker_tool_action_allowed(&call.tool, &arguments) {
-                        serde_json::json!({"ok":false,"error":"sticker_action_not_allowed"})
-                    } else {
-                        let query = lease.stickers.expect("authorized sticker reader");
-                        let mut cancelled = lease.cancelled;
-                        let mut job = tokio::task::spawn_blocking(move || query(&arguments));
-                        tokio::select! {biased;
-                            _=cancelled.changed()=>serde_json::json!({"ok":false,"error":"cancelled"}),
-                            result=&mut job=>match result {Ok(result)=>{sticker_preview=result.preview_png;result.data},Err(_)=>serde_json::json!({"ok":false,"error":"sticker_lookup_failed"})}
-                        }
-                    }
+                    let result = execute_sticker_tool(
+                        &call.tool,
+                        arguments,
+                        lease.stickers.expect("authorized sticker reader"),
+                        lease
+                            .sticker_action_policy
+                            .expect("authorized_sticker_action_policy"),
+                        lease.cancelled,
+                    )
+                    .await;
+                    sticker_preview = result.preview_png;
+                    result.data
                 } else if matches!(
                     call.tool.as_str(),
                     "qq_info"
@@ -530,6 +531,28 @@ impl ApprovalBroker {
     }
 }
 
+async fn execute_sticker_tool(
+    name: &str,
+    arguments: String,
+    query: super::StickerQuery,
+    action_allowed: super::StickerActionPolicy,
+    mut cancelled: tokio::sync::watch::Receiver<bool>,
+) -> super::StickerToolResult {
+    let failure = |error| super::StickerToolResult {
+        data: serde_json::json!({"ok":false,"error":error}),
+        preview_png: None,
+    };
+    // Keep action validation ahead of blocking work and cancellation selection.
+    if !action_allowed(name, &arguments) {
+        return failure("sticker_action_not_allowed");
+    }
+    let mut job = tokio::task::spawn_blocking(move || query(&arguments));
+    tokio::select! {biased;
+        _=cancelled.changed()=>failure("cancelled"),
+        result=&mut job=>result.unwrap_or_else(|_|failure("sticker_lookup_failed")),
+    }
+}
+
 fn sticker_tool_response(result: JsonValue, preview: Option<Vec<u8>>) -> JsonValue {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     let success = result.get("ok").and_then(JsonValue::as_bool) == Some(true);
@@ -617,6 +640,34 @@ fn social_tool_response(mut result: JsonValue, allow_image: bool) -> JsonValue {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn injected_sticker_denial_precedes_cancellation_and_never_starts_the_reader() {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let observed = calls.clone();
+        let (cancel, receiver) = tokio::sync::watch::channel(true);
+        drop(cancel);
+        let result = execute_sticker_tool(
+            "sticker_lookup",
+            r#"{"action":"save"}"#.into(),
+            Arc::new(move |_| {
+                observed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                super::super::StickerToolResult {
+                    data: serde_json::json!({"ok":true}),
+                    preview_png: Some(vec![1]),
+                }
+            }),
+            |_, _| false,
+            receiver,
+        )
+        .await;
+        assert_eq!(
+            result.data,
+            serde_json::json!({"ok":false,"error":"sticker_action_not_allowed"})
+        );
+        assert!(result.preview_png.is_none());
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
 
     #[tokio::test]
     #[ignore = "explicit anonymous public browser smoke; needs trusted runtime JSON, no model"]

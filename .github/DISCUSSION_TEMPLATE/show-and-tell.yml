@@ -4,7 +4,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        展示你基于 CodexClaw 的用法、定制 Fork 或有趣的定时任务配置！
+        展示你基于 ClawMingle 的用法、定制 Fork 或有趣的定时任务配置！
   - type: textarea
     id: showcase
     attributes:

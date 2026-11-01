@@ -175,6 +175,7 @@ fn no_symlinks(path: &Path) -> Result<()> {
 }
 
 fn private_directory(path: &Path, create: bool) -> Result<()> {
+    ensure!(path.is_absolute(), "history_absolute_path_required");
     if create {
         match fs::DirBuilder::new().mode(0o700).create(path) {
             Ok(()) => {}

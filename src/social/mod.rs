@@ -55,6 +55,7 @@ mod task_feedback;
 mod task_identity;
 mod task_status;
 mod tasks;
+mod tool_catalog;
 mod tool_control;
 mod traffic;
 mod voice;

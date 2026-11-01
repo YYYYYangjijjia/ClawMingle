@@ -2,6 +2,38 @@ use super::*;
 use std::sync::Mutex;
 type Calls = Arc<Mutex<Vec<(String, Value)>>>;
 
+#[test]
+fn remote_routes_preserve_legacy_names_and_reject_unregistered_targets() {
+    for name in [
+        "manage.folder_list",
+        "manage.create_file",
+        "create_smartcanvas_by_mdx",
+        "manage.move_file",
+        "manage.query_file_info",
+        "manage.rename_file_title",
+        "manage.delete_file",
+        "smartcanvas.get_top_level_pages",
+        "smartcanvas.read",
+        "smartcanvas.find",
+        "smartcanvas.edit",
+        "create_mind_by_markdown",
+        "create_flowchart_by_mermaid",
+        "manage.pre_import",
+        "manage.async_import",
+        "manage.import_progress",
+        "manage.export_file",
+        "manage.export_progress",
+    ] {
+        assert_eq!(
+            remote_route(name).unwrap(),
+            ("https://docs.qq.com/openapi/mcp", name)
+        );
+    }
+    for name in ["", "unknown", "https://example.com", "manage.unregistered"] {
+        assert!(remote_route(name).is_err());
+    }
+}
+
 /// Private operator harness. Request and response stay in protected local files;
 /// it neither runs a model nor sends QQ messages. Opt-in integration only.
 #[tokio::test]

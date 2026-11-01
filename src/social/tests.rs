@@ -49,6 +49,63 @@ fn one_request() -> GroupState {
 }
 
 #[test]
+fn unresolved_data_paths_never_write_in_the_working_directory() {
+    // A subprocess owns its cwd/HOME: parallel tests and the operator's real
+    // home are never affected, even if a filesystem guard regresses.
+    const PROBE: &str = "CLAWMINGLE_TEST_DATA_PATH_PROBE";
+    if std::env::var_os(PROBE).is_some() {
+        use crate::memory::group::{GroupMemoryError, GroupMemoryStore};
+        for path in [
+            SocialConfig::default().data_dir,
+            std::path::PathBuf::from("relative-state"),
+            std::path::PathBuf::new(),
+        ] {
+            let config = SocialConfig {
+                data_dir: path.clone(),
+                allowed_groups: vec!["fixture-group".into()],
+                ..Default::default()
+            };
+            assert_eq!(
+                config.validate().unwrap_err().to_string(),
+                "absolute_data_path_required"
+            );
+            assert!(matches!(
+                GroupMemoryStore::new(&path, "fixture-group"),
+                Err(GroupMemoryError::UnsafePath)
+            ));
+            assert!(private_directory(&path).is_err());
+            assert!(acquire_lock(&path).is_err());
+            assert!(Store::new(&path, "fixture-group").is_err());
+            assert!(super::history::History::new(&path, "fixture-group").is_err());
+            assert!(super::media::MediaStore::new(&path, "fixture-group").is_err());
+            assert!(super::stickers::StickerStore::new(&path).is_err());
+            assert!(super::memory::memory_view(&config, 0).is_err());
+        }
+        assert_eq!(std::fs::read_dir(".").unwrap().count(), 0);
+        return;
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "social::tests::unresolved_data_paths_never_write_in_the_working_directory",
+            "--nocapture",
+        ])
+        .env(PROBE, "1")
+        .env("HOME", directory.path().join("isolated-home"))
+        .current_dir(directory.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "path probe failed: {} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
+}
+
+#[test]
 fn fresh_request_omits_only_completed_sources_and_keeps_silent_and_visual_context() {
     let mut state = one_request();
     let old = state.requests.get_mut(&1).unwrap();

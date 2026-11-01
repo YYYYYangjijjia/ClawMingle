@@ -180,6 +180,10 @@ mod tests {
             let name = t["name"].as_str().unwrap();
             assert!(seen.insert(name));
             assert!(route(name).unwrap().0.starts_with("https://docs.qq.com/"));
+            assert_eq!(
+                super::super::remote_route(name).unwrap(),
+                route(name).unwrap()
+            );
             assert!(t["inputSchema"]["properties"].get("file_id").is_none());
         }
         assert!(route("manage.delete_file").is_err());
