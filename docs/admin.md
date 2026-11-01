@@ -178,7 +178,7 @@ python3 -B scripts/clawmingle_admin.py --standalone --init
 
 ### 可选鉴权代理
 
-代理模式适合已有统一登录门户的环境，personal-dashboard 是其中一个接入例子，并非项目安装依赖。独立模式与代理模式不同时启用；保留原代理部署时无需迁移登录方式。
+代理模式适合已经有统一登录门户的环境，由门户完成鉴权并注入代理令牌，它不是项目的安装依赖。独立模式与代理模式不同时启用；保留原代理部署时无需迁移登录方式。
 
 ```sh
 python3 -B scripts/clawmingle_admin.py \
