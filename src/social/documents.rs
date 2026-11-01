@@ -342,6 +342,46 @@ impl Request {
 type Remote =
     Arc<dyn Fn(String, Value) -> Pin<Box<dyn Future<Output = Result<Value>> + Send>> + Send + Sync>;
 
+/// Resolve only the fixed application catalog; model arguments never select an endpoint.
+fn remote_route(tool: &str) -> Result<(&'static str, &str)> {
+    if matches!(
+        tool,
+        "manage.folder_list"
+            | "manage.create_file"
+            | "create_smartcanvas_by_mdx"
+            | "manage.move_file"
+            | "manage.query_file_info"
+            | "manage.rename_file_title"
+            | "manage.delete_file"
+            | "smartcanvas.get_top_level_pages"
+            | "smartcanvas.read"
+            | "smartcanvas.find"
+            | "smartcanvas.edit"
+            | "create_mind_by_markdown"
+            | "create_flowchart_by_mermaid"
+            | "manage.pre_import"
+            | "manage.async_import"
+            | "manage.import_progress"
+            | "manage.export_file"
+            | "manage.export_progress"
+    ) {
+        Ok(("https://docs.qq.com/openapi/mcp", tool))
+    } else {
+        native::route(tool)
+    }
+}
+
+async fn remote_call(credential: &Path, tool: &str, arguments: Value) -> Result<Value> {
+    let (endpoint, provider_tool) = remote_route(tool)?;
+    crate::codex::app_server::scoped_integrations::tencent_docs_call(
+        credential,
+        endpoint,
+        provider_tool,
+        arguments,
+    )
+    .await
+}
+
 pub fn query(config: &super::SocialConfig, group: &str, request_id: u64) -> QqQuery {
     let settings = config.documents.clone();
     let registrar = settings.qq_native.registrar(group);
@@ -370,7 +410,7 @@ pub fn query(config: &super::SocialConfig, group: &str, request_id: u64) -> QqQu
                 let credential = settings.credential_file.expect("configured");
                 let remote: Remote = Arc::new(move |name, args| {
                     let credential = credential.clone();
-                    Box::pin(async move { crate::codex::app_server::scoped_integrations::tencent_docs_call(&credential, &name, args).await })
+                    Box::pin(async move { remote_call(&credential, &name, args).await })
                 });
                 Broker { folder:folder.expect("configured"), root, remote, workspace, registrar }.execute(request, request_id).await
             }.await;
@@ -437,9 +477,7 @@ pub async fn admin_operation(config: &super::SocialConfig) -> Result<()> {
         }
         _ => anyhow::bail!("documents_action_invalid"),
     };
-    let mut result =
-        crate::codex::app_server::scoped_integrations::tencent_docs_call(credential, name, args)
-            .await?;
+    let mut result = remote_call(credential, name, args).await?;
     if name == "manage.folder_list" {
         let entries = result["list"]
             .as_array()

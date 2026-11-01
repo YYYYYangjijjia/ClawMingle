@@ -59,6 +59,27 @@ Do not commit real QQ credentials or Codex auth material. Keep secrets in a loca
 
 ## ClawMingle Development Addendum
 
+ClawMingle extends the upstream module map with **`social/`**, the application
+composition layer for group/private conversations, participation decisions,
+request and delivery state, tasks, memory, stickers and document tools.
+`social/runtime.rs` owns worker orchestration; feature modules own their policies
+and handlers. `social/history.rs` persists conversation history in SQLite through
+`rusqlite`. The independent `src/bin/clawmingle.rs` entry depends on `social` and
+coexists with the upstream `app` / `main` entry. The management UI lives in
+`admin/`; its HTTP host lives under `scripts/`.
+
+The dependency direction for these features is `social` -> `codex`, never the
+reverse. ClawMingle places `social` above the shared `codex`, `qq`, `config`,
+`model` and `util` modules, with `bin/clawmingle` as the composition entry above
+`social`; the upstream dependency chain above is retained.
+`codex/app_server/tool_catalog.rs` defines the immutable `ToolCatalog`
+registration contract. `social/tool_catalog.rs` supplies five fixed schemas and
+the synchronous sticker action policy through `SocialTurnInput`; declarations
+and prompt budgeting use that same catalog. Registration does not grant tool
+access: the fixed name allowlist and per-turn registry still authorize calls.
+Social resolves document operation routes before passing the endpoint and
+provider tool to the Codex MCP transport.
+
 The upstream guidance above is preserved. Follow [docs/development.md](docs/development.md)
 for ClawMingle's current scope and repository protections. Read `.local/DEVELOPMENT.md`
 when present for machine-specific paths and validation records; keep it ignored.

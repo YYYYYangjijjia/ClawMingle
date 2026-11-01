@@ -638,7 +638,7 @@ async fn group_worker(
                                     let (backend_cancel,backend_rx)=oneshot::channel();
                                     let messages=Some(Arc::new(move|name:&str,args:&str|super::message_context::tool(&history,name,args)) as crate::codex::app_server::MessageQuery);
                                     let schema=json!({"type":"object","properties":{"text":{"type":"string","minLength":1,"maxLength":4000}},"required":["text"],"additionalProperties":false});
-                                    let execution=async{let result=codex.execute_social_with_input(request,schema,crate::codex::app_server::SocialTurnInput{admission:model_permit,tools,workspace,messages,qq_info,skill_packages,integrations,..Default::default()},Some(backend_rx),None).await?;let value:Value=serde_json::from_str(&result.text)?;Ok(value.get("text").and_then(Value::as_str).ok_or_else(||anyhow::anyhow!("task_output_invalid"))?.to_owned())};
+                                    let execution=async{let result=codex.execute_social_with_input(request,schema,crate::codex::app_server::SocialTurnInput{tool_catalog:super::tool_catalog::catalog().clone(),admission:model_permit,tools,workspace,messages,qq_info,skill_packages,integrations,..Default::default()},Some(backend_rx),None).await?;let value:Value=serde_json::from_str(&result.text)?;Ok(value.get("text").and_then(Value::as_str).ok_or_else(||anyhow::anyhow!("task_output_invalid"))?.to_owned())};
                                     bounded_execution(execution,cancel_rx,backend_cancel,deadline,Duration::from_secs(10)).await
                                 }));
                             }
@@ -946,7 +946,7 @@ async fn group_worker(
                                     else if name=="memory_manage" {super::memory_agent::tool(&history,&task_permissions,&task_target,task_private,id,args)}
                                     else{super::message_context::tool(&history,name,args)}
                                 }) as crate::codex::app_server::MessageQuery);
-                                let result=codex.execute_social_with_input(request,schema,crate::codex::app_server::SocialTurnInput{admission:Some(model_permit),model_observer:None,images:visual_data,tools,workspace:workspace.clone(),messages,qq_info,documents,skill_packages,integrations,stickers:sticker_query,steer:Some(steer_rx),allow_long_wait:generation_config.interactions.enabled && generation_config.interactions.long_timeout_seconds==0,interaction,identity,group_profile,tool_calls:generation_config.interactions.enabled.then_some(generation_config.interactions.tool_calls),workspace_timeout_seconds:generation_config.interactions.enabled.then_some(generation_config.interactions.workspace_timeout_seconds)},Some(main_rx),Some(turn_updates)).await?;
+                                let result=codex.execute_social_with_input(request,schema,crate::codex::app_server::SocialTurnInput{tool_catalog:super::tool_catalog::catalog().clone(),admission:Some(model_permit),model_observer:None,images:visual_data,tools,workspace:workspace.clone(),messages,qq_info,documents,skill_packages,integrations,stickers:sticker_query,steer:Some(steer_rx),allow_long_wait:generation_config.interactions.enabled && generation_config.interactions.long_timeout_seconds==0,interaction,identity,group_profile,tool_calls:generation_config.interactions.enabled.then_some(generation_config.interactions.tool_calls),workspace_timeout_seconds:generation_config.interactions.enabled.then_some(generation_config.interactions.workspace_timeout_seconds)},Some(main_rx),Some(turn_updates)).await?;
                                 ensure!(result.generated_images.is_empty(),"shared_image_generation_disallowed");
                                 let mut generated_images=Vec::new();
                                 let reply_config=super::interaction::reply_config(&generation_config,*budget_rx.borrow());
@@ -2875,7 +2875,10 @@ fn codex_prompt_with_reserve(
         config.max_bubbles, config.max_bubble_chars, capability_instructions
     );
     let tool_tokens = super::input_budget::estimate(&serde_json::to_string(
-        &crate::codex::app_server::social_tool_policy::definitions(&config.enabled_tools),
+        &crate::codex::app_server::social_tool_policy::definitions(
+            &config.enabled_tools,
+            super::tool_catalog::catalog(),
+        ),
     )?);
     super::input_budget::trim(
         &mut input,

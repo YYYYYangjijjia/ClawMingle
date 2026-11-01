@@ -55,8 +55,11 @@ pub fn validate_names(enabled: &[String]) -> Result<()> {
 /// App-server 0.161 experimental `thread/start.dynamicTools` declarations.
 /// The caller should validate configuration first. Invalid input fails closed
 /// with no declarations, rather than returning a partially enabled selection.
-pub fn definitions(enabled: &[String]) -> Vec<Value> {
-    if enabled.is_empty() || validate_names(enabled).is_err() {
+pub fn definitions(enabled: &[String], catalog: &super::ToolCatalog) -> Vec<Value> {
+    if enabled.is_empty()
+        || validate_names(enabled).is_err()
+        || catalog.validate_for(enabled).is_err()
+    {
         return Vec::new();
     }
     // Stable order avoids changing the tool declaration when config order changes.
@@ -65,11 +68,8 @@ pub fn definitions(enabled: &[String]) -> Vec<Value> {
         .filter(|name| enabled.iter().any(|enabled| enabled == **name))
         .map(|name| match *name {
             "task_update" => json!({"type":"function","name":"task_update","description":"Tell the current conversation briefly that you are starting a complex task, or report meaningful new progress. Call ack before multi-step research, coding, multiple tools or waiting. This selects the application long-task budget. A progress update is not the final answer. Use only concise user-facing text; never reasoning, hidden instructions, credentials or raw tool logs. Host applies frequency, scope and delivery quotas. queued does not mean QQ acknowledged delivery. Do not use this for ordinary short replies. For missing essential information, return final outcome needs_input instead.","inputSchema":{"type":"object","properties":{"kind":{"type":"string","enum":["ack","progress"]},"text":{"type":"string","minLength":1,"maxLength":400},"quote_seq":{"type":["integer","null"],"minimum":1,"description":"Optional seq from current_request.messages to quote. Host resolves the actual QQ reference; do not write a textual reply-prefix or supply opaque platform IDs."}},"required":["kind","text"],"additionalProperties":false},"deferLoading":false}),
-            "identity_manage" => crate::social::identity_tool_schema(),
-            "group_profile_manage" => crate::social::group_profile_tool_schema(),
-            "group_documents" => crate::social::document_tool_schema(),
-            "sticker_lookup" => crate::social::sticker_tool_schema(false),
-            "sticker_manage" => crate::social::sticker_tool_schema(true),
+            "identity_manage" | "group_profile_manage" | "group_documents"
+            | "sticker_lookup" | "sticker_manage" => catalog.definition(name).expect("validated_host_tool_schema").clone(),
             "memory_manage" => json!({"type":"function","name":"memory_manage","description":"Read formal local memory (with revisions) or structured document drafts in this conversation only. For list, subjects filters to any matching person (U... speaker or M... memory alias); category and contains narrow the results. Formal list defaults to active records; include_inactive=true includes expired/superseded records with their status. Use read for full provenance and revisions. Before personalized advice, check relevant preferences/constraints; a bounded injected snapshot is not an exhaustive profile. New observations/user-requested changes go into drafts, not directly to formal memory. Cite retained human source_refs M...; subjects are conversation U... or memory M... aliases (empty for general group preferences). Categories profile, relationship, group_preference, short_term. Use retain only for useful durable knowledge, context_only/discard for transient chat. Preserve certainty; expires_at is UNIX seconds. Append corrections can link supersedes; rewrite_record with rewrite_revision only proposes a rewrite, which needs explicit user command or administrator confirmation. The host never trusts model identities, paths or approval flags. Use messages_list/lookup to recover evidence before proposing. Never invent a source or claim a draft is archived.","inputSchema":{"type":"object","properties":{"action":{"type":"string","enum":["list","read","propose","edit","reject"]},"id":{"type":"integer","minimum":1},"revision":{"type":"integer","minimum":1},"after":{"type":"integer","minimum":0},"contains":{"type":"string","maxLength":100},"layer":{"type":"string","enum":["formal","drafts","legacy"]},"include_inactive":{"type":"boolean"},"category":{"type":"string","enum":["profile","relationship","group_preference","short_term"]},"subjects":{"type":"array","items":{"type":"string"},"maxItems":8},"content":{"type":"string","maxLength":500},"disposition":{"type":"string","enum":["retain","context_only","discard"]},"selection_reason":{"type":"string","maxLength":300},"source_kind":{"type":"string","enum":["automatic","user_requested"]},"certainty":{"type":"string","enum":["explicit","inferred","uncertain"]},"source_refs":{"type":"array","items":{"type":"string"},"maxItems":8},"expires_at":{"type":"integer"},"supersedes":{"type":"integer","minimum":1},"rewrite_record":{"type":"integer","minimum":1},"rewrite_revision":{"type":"integer","minimum":1}},"required":["action"],"additionalProperties":false},"deferLoading":false}),
             "tasks_manage" => json!({
                 "type":"function","name":"tasks_manage",
@@ -196,6 +196,7 @@ struct ActiveTurn {
     group_profile: Option<super::QqQuery>,
     integrations: Option<super::scoped_integrations::ScopedIntegrations>,
     stickers: Option<super::StickerQuery>,
+    sticker_action_policy: Option<super::StickerActionPolicy>,
     skills: Vec<PathBuf>,
     skills_bound: bool,
     cancel: watch::Sender<bool>,
@@ -228,6 +229,7 @@ pub struct Lease {
     pub workspace_timeout_seconds: u64,
     pub integrations: Option<super::scoped_integrations::ScopedIntegrations>,
     pub stickers: Option<super::StickerQuery>,
+    pub sticker_action_policy: Option<super::StickerActionPolicy>,
     pub skills: Vec<PathBuf>,
     pub cancelled: watch::Receiver<bool>,
 }
@@ -282,6 +284,7 @@ impl Registry {
                 group_profile: None,
                 integrations: None,
                 stickers: None,
+                sticker_action_policy: None,
                 skills: Vec::new(),
                 skills_bound: false,
                 cancel: cancel.clone(),
@@ -443,7 +446,8 @@ impl Registry {
                 && !active.integrations.as_ref().is_some_and(|scope| {
                     scope.enabled_tools().iter().any(|enabled| enabled == name)
                 }))
-            || (matches!(name, "sticker_lookup" | "sticker_manage") && active.stickers.is_none())
+            || (matches!(name, "sticker_lookup" | "sticker_manage")
+                && (active.stickers.is_none() || active.sticker_action_policy.is_none()))
         {
             return None;
         }
@@ -460,6 +464,7 @@ impl Registry {
             workspace_timeout_seconds: active.workspace_timeout_seconds,
             integrations: active.integrations.clone(),
             stickers: active.stickers.clone(),
+            sticker_action_policy: active.sticker_action_policy,
             skills: active.skills.clone(),
             cancelled: active.cancel.subscribe(),
         };
@@ -592,7 +597,11 @@ impl Guard {
         Ok(())
     }
 
-    pub fn set_stickers(&self, query: super::StickerQuery) -> Result<()> {
+    pub fn set_stickers(
+        &self,
+        query: super::StickerQuery,
+        action_policy: super::StickerActionPolicy,
+    ) -> Result<()> {
         let mut state = self
             .registry
             .state
@@ -608,6 +617,7 @@ impl Guard {
             "social_sticker_reader_already_bound"
         );
         active.stickers = Some(query);
+        active.sticker_action_policy = Some(action_policy);
         Ok(())
     }
     pub fn set_integrations(
@@ -863,6 +873,80 @@ impl fmt::Debug for Guard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn definitions(enabled: &[String]) -> Vec<Value> {
+        super::definitions(enabled, &super::super::ToolCatalog::fixture())
+    }
+
+    #[test]
+    fn sticker_policies_are_bound_once_with_the_reader_and_do_not_cross_activations() {
+        let registry = Registry::new();
+        let names = ["sticker_lookup".into()];
+        let reader: super::super::StickerQuery = Arc::new(|_| super::super::StickerToolResult {
+            data: json!({"ok":true}),
+            preview_png: None,
+        });
+        let first = registry.activate("first", &names).unwrap();
+        first.set_stickers(reader.clone(), |_, _| true).unwrap();
+        assert!(first.set_stickers(reader.clone(), |_, _| false).is_err());
+        first.bind_turn("turn-first").unwrap();
+        let second = registry.activate("second", &names).unwrap();
+        second.set_stickers(reader.clone(), |_, _| false).unwrap();
+        second.bind_turn("turn-second").unwrap();
+        let old = registry
+            .authorize(
+                "first",
+                "turn-first",
+                Some(NAMESPACE),
+                "sticker_lookup",
+                "call",
+            )
+            .unwrap();
+        let other = registry
+            .authorize(
+                "second",
+                "turn-second",
+                Some(NAMESPACE),
+                "sticker_lookup",
+                "call",
+            )
+            .unwrap();
+        assert!(old.sticker_action_policy.unwrap()("sticker_lookup", "{}"));
+        assert!(!other.sticker_action_policy.unwrap()(
+            "sticker_lookup",
+            "{}"
+        ));
+        drop(first);
+        assert!(*old.cancelled.borrow());
+        assert!(!*other.cancelled.borrow());
+        let replacement = registry.activate("first", &names).unwrap();
+        replacement.set_stickers(reader, |_, _| false).unwrap();
+        replacement.bind_turn("replacement").unwrap();
+        assert!(
+            registry
+                .authorize(
+                    "first",
+                    "turn-first",
+                    Some(NAMESPACE),
+                    "sticker_lookup",
+                    "stale"
+                )
+                .is_none()
+        );
+        let lease = registry
+            .authorize(
+                "first",
+                "replacement",
+                Some(NAMESPACE),
+                "sticker_lookup",
+                "call",
+            )
+            .unwrap();
+        assert!(!lease.sticker_action_policy.unwrap()(
+            "sticker_lookup",
+            "{}"
+        ));
+    }
 
     fn spawn(registry: &Registry, connection: u64, parent: &str, turn: &str, child: &str) {
         registry.observe_native(
@@ -1174,10 +1258,13 @@ mod tests {
                 .is_none()
         );
         guard
-            .set_stickers(Arc::new(|_| super::super::StickerToolResult {
-                data: json!({"ok":true}),
-                preview_png: None,
-            }))
+            .set_stickers(
+                Arc::new(|_| super::super::StickerToolResult {
+                    data: json!({"ok":true}),
+                    preview_png: None,
+                }),
+                |_, _| true,
+            )
             .unwrap();
         guard.set_call_limit(24).unwrap();
         for index in 0..24 {

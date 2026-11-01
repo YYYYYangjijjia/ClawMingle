@@ -363,3 +363,34 @@ CodexClaw 基于 tokio 多线程运行时构建，使用以下异步模式：
 4. 如需引入状态，通过 `Arc` 传入 `App` 结构体（参考 session/memory/shadow 的模式）。
 5. 在每个文件中使用 `#[cfg(test)] mod tests` 添加单元测试。
 6. 使用 `rust-i18n` 的 `t!` 宏进行国际化，更新两个语言文件。
+
+---
+
+## ClawMingle 架构补充
+
+上文保留上游 CodexClaw 架构。ClawMingle 的群聊和私聊应用层位于
+`src/social/`：`runtime.rs` 组装会话 worker，功能模块负责参与决策、消息历史、
+请求与投递状态、任务、记忆、表情和文档；`history.rs` 通过 `rusqlite` 将对话历史
+持久化到 SQLite。管理界面位于 `admin/`，HTTP 宿主位于 `scripts/`。
+
+ClawMingle 的分层位置是共享的 `util` / `model` / `config` / `codex` / `qq`
+等基础模块之上，由 `social` 负责应用组装，再由独立的
+`src/bin/clawmingle.rs` 作为入口调用；与上游的 `app` / `main` 入口并存。
+这些模块通过 `codex` 的执行接口运行模型；`codex` 不引用 `social` 的实现。
+
+`codex/app_server/tool_catalog.rs` 定义不可变的 `ToolCatalog`，仅接受固定的
+五个应用工具名。`social/tool_catalog.rs` 注册身份、群资料、群文档和两种表情
+工具的原始 `inputSchema` 声明，以及同步的表情 action 权限函数。
+`SocialTurnInput` 把这份注册传入执行层；线程工具声明、输入体积记录和提示预算
+使用同一份定义，保持声明顺序与原有协议不变。没有应用工具的轮次仍可使用默认
+空注册；选择应用工具却缺少注册时，在启动执行前报错。
+
+声明注册不授予执行权限。固定工具白名单及每轮的 registry/guard/lease 继续约束
+可调用工具、回调、调用预算、子代理归属和撤销。表情回调与 action 权限函数一同
+绑定到该轮 lease；分发先同步检查 action，再启动阻塞读取并处理取消，保留原有
+拒绝与取消的优先级。
+
+腾讯文档路由由 `social/documents.rs` 统一解析：保留既有通用操作的固定 endpoint，
+其他操作交给 `documents/native.rs` 的固定目录。群内工具和管理命令共用这一路由；
+`codex/app_server/scoped_integrations/mcp.rs` 只接收解析后的 endpoint、提供方工具名
+和参数，维持原有凭据读取、HTTP/MCP 会话与结果处理，不反向读取应用目录。

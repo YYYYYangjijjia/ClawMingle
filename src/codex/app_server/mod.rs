@@ -26,6 +26,7 @@ pub(crate) mod session;
 pub(crate) mod social_tool_policy;
 mod social_tools;
 pub(crate) mod supervisor;
+mod tool_catalog;
 mod tool_output;
 pub(crate) mod transport;
 mod workspace_exec;
@@ -43,6 +44,7 @@ pub use models::AvailableModel;
 pub use native_images::NativeImageRequest;
 pub use protocol::ClientInfo;
 pub use session::TurnPolicy;
+pub use tool_catalog::{StickerActionPolicy, ToolCatalog};
 
 /// Host-owned, conversation-scoped read access; no model-supplied paths or SQL.
 pub type MessageQuery = std::sync::Arc<dyn Fn(&str, &str) -> serde_json::Value + Send + Sync>;
@@ -81,6 +83,7 @@ pub struct SocialTurnInput {
     pub model_observer: Option<admission::ModelObserver>,
     pub images: Vec<String>,
     pub tools: Vec<String>,
+    pub tool_catalog: ToolCatalog,
     pub workspace: Option<std::path::PathBuf>,
     pub messages: Option<MessageQuery>,
     pub steer: Option<mpsc::Receiver<SocialSteer>>,
@@ -212,6 +215,7 @@ impl AppServerHandle {
         self.supervisor.validate_social_request(&request)?;
         validate_image_inputs(&input.images)?;
         social_tool_policy::validate_names(&input.tools)?;
+        input.tool_catalog.validate_for(&input.tools)?;
         if let Some(workspace) = &input.workspace {
             self.supervisor.validate_tool_workspace(workspace)?;
         }
@@ -233,8 +237,11 @@ impl AppServerHandle {
         }
         tracing::info!(
             prompt_bytes = request.prompt.len(),
-            tool_definitions_bytes =
-                serde_json::to_vec(&social_tool_policy::definitions(&input.tools))?.len(),
+            tool_definitions_bytes = serde_json::to_vec(&social_tool_policy::definitions(
+                &input.tools,
+                &input.tool_catalog
+            ))?
+            .len(),
             output_schema_bytes = serde_json::to_vec(&output_schema)?.len(),
             image_inputs = input.images.len(),
             resumed_thread = request.session_state.session_id.is_some(),

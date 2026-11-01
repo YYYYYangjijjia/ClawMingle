@@ -268,34 +268,10 @@ impl Session {
 /// registrations. The caller enforces group membership and journals mutations.
 pub(crate) async fn tencent_docs_call(
     credential: &std::path::Path,
-    tool: &str,
+    endpoint: &str,
+    provider_tool: &str,
     arguments: Value,
 ) -> Result<Value> {
-    let (endpoint, provider_tool) = if matches!(
-        tool,
-        "manage.folder_list"
-            | "manage.create_file"
-            | "create_smartcanvas_by_mdx"
-            | "manage.move_file"
-            | "manage.query_file_info"
-            | "manage.rename_file_title"
-            | "manage.delete_file"
-            | "smartcanvas.get_top_level_pages"
-            | "smartcanvas.read"
-            | "smartcanvas.find"
-            | "smartcanvas.edit"
-            | "create_mind_by_markdown"
-            | "create_flowchart_by_mermaid"
-            | "manage.pre_import"
-            | "manage.async_import"
-            | "manage.import_progress"
-            | "manage.export_file"
-            | "manage.export_progress"
-    ) {
-        ("https://docs.qq.com/openapi/mcp", tool)
-    } else {
-        crate::social::documents::native::route(tool)?
-    };
     let registration = McpRegistration {
         enabled: true,
         name: "Tencent Docs".into(),
