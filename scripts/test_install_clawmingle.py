@@ -1,6 +1,7 @@
 """Offline deployment contract tests; all homes, executables and services are fake."""
 
 from contextlib import ExitStack
+import ast
 import io
 import json
 import os
@@ -254,6 +255,36 @@ class InstallationTests(unittest.TestCase):
         (self.repository / 'admin/setup.js').unlink()
         with self.assertRaisesRegex(install.InstallError, 'setup.js'):
             self.fresh(build=True).apply()
+        self.assertFalse(self.installer.root.exists())
+        self.assertEqual([], self.commands)
+
+    def test_admin_sibling_document_helper_is_real_and_installed_privately(self):
+        # Exercise the actual backend's sibling-file contract, not just the
+        # installer's own list: an omitted helper otherwise disappears from
+        # both the generated fixtures and installation assertions unnoticed.
+        scripts = Path(__file__).resolve().parent
+        tree = ast.parse((scripts / 'clawmingle_admin.py').read_text())
+        helpers = {node.args[0].value for node in ast.walk(tree)
+                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                   and node.func.attr == 'with_name' and len(node.args) == 1
+                   and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
+                   and node.args[0].value.endswith('.mjs')}
+        self.assertIn('clawmingle_qq_documents_login.mjs', helpers)
+        for name in helpers:
+            self.assertIn(name, install.SCRIPTS)
+            source = scripts / name
+            self.assertTrue(source.is_file(), name)
+            self.write(self.repository / 'scripts' / name, source.read_bytes())
+        self.installer.apply()
+        for name in helpers:
+            target = (self.installer.root / 'admin/clawmingle_admin.py').with_name(name)
+            self.assertEqual((scripts / name).read_bytes(), target.read_bytes())
+            self.assertEqual(0o600, stat.S_IMODE(target.stat().st_mode))
+
+    def test_missing_document_login_helper_blocks_installation(self):
+        (self.repository / 'scripts/clawmingle_qq_documents_login.mjs').unlink()
+        with self.assertRaisesRegex(install.InstallError, 'clawmingle_qq_documents_login.mjs'):
+            self.installer.apply()
         self.assertFalse(self.installer.root.exists())
         self.assertEqual([], self.commands)
 

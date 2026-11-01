@@ -22,7 +22,8 @@ import sys
 
 BINARIES = ('clawmingle', 'clawmingle-hook-proxy', 'clawmingle-hook-input')
 SCRIPTS = ('clawmingle_admin.py', 'admin_auth.py', 'admin_setup.py',
-           'codex_capabilities.py', 'qq_smoke.py', 'qq_panels.py')
+           'codex_capabilities.py', 'qq_smoke.py', 'qq_panels.py',
+           'clawmingle_qq_documents_login.mjs')
 ASSETS = ('index.html', 'app.js', 'app.css', 'login.html', 'login.js',
           'login.css', 'setup.html', 'setup.js', 'setup.css')
 UNITS = ('clawmingle.service', 'clawmingle-admin.service')
