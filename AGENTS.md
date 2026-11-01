@@ -86,6 +86,11 @@ The upstream guidance above is preserved. Follow [docs/development.md](docs/deve
 for ClawMingle's current scope and repository protections. Read `.local/DEVELOPMENT.md`
 when present for machine-specific paths and validation records; keep it ignored.
 
+For commits with substantive Codex contributions, retain the human Git author
+and add `Co-authored-by: Codex <267193182+codex@users.noreply.github.com>`.
+Credit other AI tools only when they contributed to that change. Preserve existing
+attributions; do not rewrite published history solely to add AI credit.
+
 For a user-requested installation, follow [docs/agent-deployment.md](docs/agent-deployment.md):
 the Agent handles preflight, build, installation and verification; the user enters
 credentials and completes account authorization in the local management UI.

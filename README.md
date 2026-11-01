@@ -325,6 +325,7 @@ ClawMingle 仍处于早期开发阶段，下面这些情况请提前了解：
 
 - 本项目基于 [**CodexClaw**](https://github.com/Rhapsody0x1/CodexClaw)（作者 Rhapsody0x1）开发，沿用其 MIT 许可并保留原作者署名。上游 README 完整存档在 [docs/upstream/](docs/upstream/README.md)。其中的个人会话导入和 `codex-claw` 部署步骤属于上游产品，不适用于 ClawMingle。
 - Agent 能力由 [OpenAI Codex](https://developers.openai.com/codex/app-server) App Server 提供，浏览器能力来自 [Playwright](https://playwright.dev/)。
+- 开发由维护者主导，主要使用 [Codex](https://github.com/codex) 协助实现、调试与代码审查；[Claude Code](https://github.com/anthropics/claude-code) 也参与了文档整理与优化。维护者负责设计决策、验证与发布，提交中的共同作者署名记录实际使用的 AI 工具。
 - 以 [MIT License](LICENSE) 发布。
 
 <div align="center">

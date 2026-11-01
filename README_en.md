@@ -327,6 +327,7 @@ Issues and pull requests are welcome. Read the [contributing guide](CONTRIBUTING
 
 - ClawMingle is built on [**CodexClaw**](https://github.com/Rhapsody0x1/CodexClaw) by Rhapsody0x1 and keeps its MIT license and attribution. The upstream README is archived in [docs/upstream/](docs/upstream/README_en.md). Its personal-session import and `codex-claw` deployment steps belong to the upstream product and do not apply to ClawMingle.
 - Agent capabilities come from the [OpenAI Codex](https://developers.openai.com/codex/app-server) App Server, and browser capabilities from [Playwright](https://playwright.dev/).
+- Development is led by the maintainer, primarily with [Codex](https://github.com/codex) assisting with implementation, debugging and code review. [Claude Code](https://github.com/anthropics/claude-code) has also helped organize and refine the documentation. The maintainer owns design decisions, validation and releases; commit co-author trailers credit the AI tools actually used.
 - Released under the [MIT License](LICENSE).
 
 <div align="center">
