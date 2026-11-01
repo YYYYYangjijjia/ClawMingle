@@ -282,7 +282,9 @@ async def send_reply(credentials, token, group, message):
         raise ProbeError("群消息发送未取得确认，结果未知；请检查 QQ，程序不会自动重发。")
 
 
-async def listen(websocket, credentials, token, command, registration_path=None):
+async def listen(websocket, credentials, token, command, registration_path=None,
+                 registration_callback=None, status_callback=None):
+    report = status_callback or (lambda text: print(text, flush=True))
     ready = False
     bot_id = None
     last_seq = None
@@ -314,7 +316,7 @@ async def listen(websocket, credentials, token, command, registration_path=None)
             last_seq = payload["s"]
         if ready and registration_path is not None:
             if diagnostic := registration_diagnostic(payload, command, bot_id, credentials.get("QQ_APP_ID")):
-                print(diagnostic, flush=True)
+                report(diagnostic)
         opcode = payload.get("op")
         if opcode == 10:
             if heartbeat_interval is not None:
@@ -342,9 +344,18 @@ async def listen(websocket, credentials, token, command, registration_path=None)
                 user = data.get("user") if isinstance(data, dict) else None
                 identity = user.get("id") if isinstance(user, dict) else None
                 bot_id = identity if isinstance(identity, str) and identity else None
-                print("QQ 已登录。请仅在你的两人测试群中 @机器人，并发送：", flush=True)
-                print(command, flush=True)
+                report("QQ 已登录。请在要接入的群里真正 @机器人，并发送本次登记口令。")
+                if status_callback is None:
+                    print(command, flush=True)
         elif ready and (match := matching_group_message(payload, command, bot_id)):
+            if registration_callback is not None:
+                # Use the nonce-matched event's stable platform member OpenID,
+                # never a nickname, mention target, or READY bot identity.
+                member = payload["d"]["author"].get("member_openid")
+                if not isinstance(member, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", member):
+                    raise ProbeError("登记消息缺少有效的成员 OpenID；未授予管理员权限。")
+                registration_callback(match[0], member)
+                return
             if registration_path is not None:
                 register_group(registration_path, match[0])
                 print("测试群已登记到仓库外私有配置。登记连接已退出，未发送消息或调用模型。", flush=True)
@@ -359,7 +370,8 @@ async def listen(websocket, credentials, token, command, registration_path=None)
             return
 
 
-async def run_probe(credentials, seconds, registration_path=None, registration_nonce=None):
+async def run_probe(credentials, seconds, registration_path=None, registration_nonce=None,
+                    registration_callback=None, status_callback=None):
     try:
         from websockets.asyncio.client import connect
         from websockets.exceptions import WebSocketException
@@ -380,18 +392,19 @@ async def run_probe(credentials, seconds, registration_path=None, registration_n
     token = token_result.get("access_token")
     if not isinstance(token, str) or not token:
         raise ProbeError("QQ 登录未返回 AccessToken，请检查 AppID 和 AppSecret。")
-    print("QQ 凭据验证成功。正在连接消息网关。", flush=True)
+    (status_callback or (lambda text: print(text, flush=True)))("QQ 凭据验证成功。正在连接消息网关。")
     gateway = await asyncio.to_thread(
         http_json, f"{API_BASE}/gateway", token=token,
         app_id=credentials["QQ_APP_ID"], stage="QQ 网关获取",
     )
     url = validate_gateway(gateway.get("url"))
-    prefix = "/clawmingle-register" if registration_path is not None else "/clawmingle-ping"
+    prefix = "/clawmingle-register" if registration_path is not None or registration_callback is not None else "/clawmingle-ping"
     command = f"{prefix} {registration_nonce or secrets.token_hex(16)}"
     try:
         async with asyncio.timeout(seconds):
             async with OfficialGatewayConnect(url, open_timeout=15, close_timeout=3, max_size=1048576) as websocket:
-                await listen(websocket, credentials, token, command, registration_path)
+                await listen(websocket, credentials, token, command, registration_path,
+                             registration_callback, status_callback)
     except TimeoutError:
         raise ProbeError("等待测试消息超时，连接已关闭。") from None
     except (WebSocketException, OSError):

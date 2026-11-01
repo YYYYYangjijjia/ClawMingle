@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>开始使用 · ClawMingle</title>
+  <link rel="stylesheet" href="./assets/setup.css">
+  <script src="./assets/setup.js" defer></script>
+</head>
+<body>
+<main>
+  <header><span class="brand">CLAWMINGLE</span><h1>让你的 AI 群友入场。</h1><p>先连接 QQ、登记一个群，再连接机器人的 Codex 账号。</p></header>
+  <p id="notice" role="status" aria-live="polite">正在读取初始化状态…</p>
+  <section aria-labelledby="connect-title">
+    <h2 id="connect-title">1 · 连接设置</h2>
+    <p>AppID 和 AppSecret 来自 QQ 机器人开放平台。请先将机器人加入要使用的群。</p>
+    <form id="settings-form">
+      <label>QQ AppID<input name="app_id" inputmode="numeric" pattern="[0-9]+" maxlength="32" required autocomplete="off"></label>
+      <label>QQ AppSecret<input name="app_secret" type="password" maxlength="8192" autocomplete="new-password"><small>首次需要填写；本页暂存后留空可保留，不会回显。</small></label>
+      <label>Jev API Key · 可稍后填写<input name="jev_key" type="password" maxlength="8192" autocomplete="new-password"><small>初始仅在被 @ 时回复；需要自然参与群聊时再启用 Jev 模式。</small></label>
+      <details><summary>模型与程序设置</summary>
+        <label>Codex 程序路径<input name="codex_binary" required spellcheck="false"><small>安装程序发现的绝对路径；这里不会自动安装或登录 Codex。</small></label>
+        <div class="columns"><label>模型<input name="model" required maxlength="128" spellcheck="false"></label><label>推理强度<select name="reasoning_effort"><option value="low">低</option><option value="medium">中</option><option value="high">高</option><option value="xhigh">极高</option></select></label></div>
+      </details>
+      <button type="submit">暂存连接设置</button><small id="credentials-note">完成初始化前，凭据仅保存在本次管理进程中；重启管理台后需重新填写。</small>
+    </form>
+  </section>
+  <section aria-labelledby="group-title">
+    <h2 id="group-title">2 · 登记群聊</h2>
+    <p>点击开始后，在目标群中真正 @机器人，并发送下面的一次性口令。发送口令的成员将成为本群的命令管理员。</p>
+    <div class="actions"><button type="button" id="registration-start" disabled>开始五分钟登记</button><button type="button" id="registration-cancel" class="secondary" disabled>取消登记</button></div>
+    <div id="registration-command" hidden><p>等待页面提示 QQ 已登录后发送：</p><code id="command"></code><p id="expires"></p></div>
+    <p id="registration-status" role="status">尚未登记群聊。</p>
+    <p id="matched" hidden></p>
+    <details><summary>手动填写平台 OpenID</summary><p>仅在已经掌握正确标识时使用。OpenID 不是 QQ 群号、QQ 号码或昵称；手动填写不会在线核验。</p>
+      <form id="manual-form"><label>群 OpenID<input name="group_openid" required maxlength="256" pattern="[A-Za-z0-9_-]+" autocomplete="off"></label><label>命令管理员的成员 OpenID<input name="admin_openid" required maxlength="256" pattern="[A-Za-z0-9_-]+" autocomplete="off"></label><button type="submit" class="secondary" id="manual-save" disabled>使用这些标识</button></form>
+    </details>
+  </section>
+  <section aria-labelledby="finish-title">
+    <h2 id="finish-title">3 · 建立配置</h2>
+    <p>初始只接入上述群聊，私聊关闭，收到 @ 才回复。之后可在管理台调整。</p>
+    <p id="paths" class="muted"></p>
+    <p>保存会检查配置并建立独立数据目录。不会复制个人 Codex 登录态，也不会自动启动机器人。</p>
+    <button type="button" id="finish" disabled>检查并完成初始化</button>
+  </section>
+</main>
+</body>
+</html>
